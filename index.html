@@ -226,8 +226,6 @@ let flashTimer   = 0;
 let flashTyp     = '';
 let letzterTreffer = '';
 let spawnTimer   = 50;
-let lueckenZaehler = 0;
-const MAX_LUECKE = 5;
 
 function mischen(a) {
     const b = [...a];
@@ -270,7 +268,6 @@ function spielStart() {
     spieler        = spielerErstellen();
     flashTimer     = 0;
     spawnTimer     = 50;
-    lueckenZaehler = 0;
     schlangeNeuFuellen();
     ziel    = naechsterBuchstabe();
     zustand = 'spielen';
@@ -292,20 +289,15 @@ function buchstabenSpawnen() {
     const aktivAnzahl   = buchstaben.filter(b => !b.weg).length;
     if (aktivAnzahl >= maxBuchstaben) return;
 
-    // Maximal EIN Zielbuchstabe gleichzeitig auf dem Bildschirm
+    // Ziel immer sichtbar: wenn kein Zielbuchstabe auf dem Feld → immer Ziel spawnen
     const zielSichtbar = buchstaben.some(b => !b.weg && b.istZiel);
 
-    const erzwingeZiel = !zielSichtbar && lueckenZaehler >= MAX_LUECKE;
-    const nimmZiel     = !zielSichtbar && (erzwingeZiel || Math.random() < 0.3);
-
     let buchstabe;
-    if (nimmZiel) {
-        buchstabe      = ziel;
-        lueckenZaehler = 0;
+    if (!zielSichtbar) {
+        buchstabe = ziel;
     } else {
         const falsche = ALPHABET.filter(l => l !== ziel);
         buchstabe     = falsche[Math.floor(Math.random() * falsche.length)];
-        if (!zielSichtbar) lueckenZaehler++;
     }
 
     const x       = 68 + Math.random() * (W - 136);
@@ -375,7 +367,6 @@ function update() {
                     return;
                 }
                 zielSetzen(naechsterBuchstabe());
-                lueckenZaehler = 0;
                 flashTimer = 90;
                 flashTyp   = 'gut';
             } else {
@@ -872,18 +863,20 @@ function buchstabenZeichnen() {
 
 // ── HUD ────────────────────────────────────────────────────────────────────
 function anzeigeZeichnen() {
-    // Zielbox
-    ctx.fillStyle = 'rgba(0,0,0,0.42)';
-    rundesRechteck(W / 2 - 155, 8, 310, 72, 16);
-    ctx.fill();
-    ctx.fillStyle    = '#FFD700';
-    ctx.font         = 'bold 17px Arial';
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Finde den Buchstaben:', W / 2, 31);
-    ctx.fillStyle = 'white';
-    ctx.font      = 'bold 38px Arial';
-    ctx.fillText(ziel, W / 2, 68);
+    // Zielbox – nur in den ersten drei Runden (punkte < 3)
+    if (punkte < 3) {
+        ctx.fillStyle = 'rgba(0,0,0,0.42)';
+        rundesRechteck(W / 2 - 155, 8, 310, 72, 16);
+        ctx.fill();
+        ctx.fillStyle    = '#FFD700';
+        ctx.font         = 'bold 17px Arial';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText('Finde den Buchstaben:', W / 2, 31);
+        ctx.fillStyle = 'white';
+        ctx.font      = 'bold 38px Arial';
+        ctx.fillText(ziel, W / 2, 68);
+    }
 
     // Herzen
     for (let i = 0; i < 3; i++) {
