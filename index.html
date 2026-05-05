@@ -164,6 +164,29 @@ function musikStarten() {
     musikSchedulieren();
 }
 
+function bellen() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    // Two short bark bursts, slightly pitched down on second
+    [[0, 420, 0.11], [0.14, 340, 0.09]].forEach(([delay, freq, dur]) => {
+        const osc  = audioCtx.createOscillator();
+        const env  = audioCtx.createGain();
+        const f    = audioCtx.createBiquadFilter();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freq, t + delay);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.55, t + delay + dur);
+        f.type = 'bandpass';
+        f.frequency.value = 900;
+        f.Q.value = 1.4;
+        env.gain.setValueAtTime(0, t + delay);
+        env.gain.linearRampToValueAtTime(0.28, t + delay + 0.012);
+        env.gain.exponentialRampToValueAtTime(0.001, t + delay + dur);
+        osc.connect(f); f.connect(env); env.connect(masterGain);
+        osc.start(t + delay);
+        osc.stop(t + delay + dur + 0.02);
+    });
+}
+
 function musikNote(hz, start, dauer, lautst, typ, tiefpass = 0) {
     const osc  = audioCtx.createOscillator();
     const env  = audioCtx.createGain();
@@ -394,6 +417,7 @@ function spielerPhysik() {
     if ((tasten['ArrowUp'] || tasten[' '] || tasten['w'] || tasten['W']) && spieler.aufBoden) {
         spieler.vy = JUMP_V;
         spieler.aufBoden = false;
+        bellen();
     }
     spieler.x = Math.max(PW / 2, Math.min(W - PW / 2, spieler.x));
     spieler.vy += GRAVITY;
@@ -977,7 +1001,7 @@ let touchX0 = null;
 canvas.addEventListener('touchstart', e => {
     touchX0 = e.touches[0].clientX;
     if (zustand === 'start' || zustand === 'spielende' || zustand === 'gewonnen') { spielStart(); return; }
-    if (zustand === 'spielen' && spieler.aufBoden) { spieler.vy = JUMP_V; spieler.aufBoden = false; }
+    if (zustand === 'spielen' && spieler.aufBoden) { spieler.vy = JUMP_V; spieler.aufBoden = false; bellen(); }
 }, { passive: true });
 
 canvas.addEventListener('touchmove', e => {
