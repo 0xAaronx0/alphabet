@@ -63,9 +63,18 @@ let deutscheStimme = null;
 
 function stimmenLaden() {
     const stimmen = synth.getVoices();
+    // Priorität: beste natürlichste deutsche Stimme
     deutscheStimme =
-        stimmen.find(v => v.lang === 'de-DE' && v.localService) ||
-        stimmen.find(v => v.lang === 'de-DE') ||
+        // macOS: "Anna" – hochwertige lokale Stimme
+        stimmen.find(v => v.name === 'Anna') ||
+        // macOS Ventura+: Samantha (DE) / Steffi / Markus
+        stimmen.find(v => /Steffi|Markus|Yannick/i.test(v.name) && v.lang.startsWith('de')) ||
+        // Chrome: Google-Onlinestimme (höchste Qualität)
+        stimmen.find(v => v.name.startsWith('Google') && v.lang === 'de-DE') ||
+        // Sonstige Online-Stimmen (besser als Standard-Local)
+        stimmen.find(v => !v.localService && v.lang === 'de-DE') ||
+        // Lokale de-DE Fallback
+        stimmen.find(v => v.localService && v.lang === 'de-DE') ||
         stimmen.find(v => v.lang.startsWith('de')) ||
         null;
 }
@@ -98,6 +107,118 @@ const SUPERRUFE = [
 function superSprechen(buchstabe) {
     const [text, tempo, ton] = SUPERRUFE[Math.floor(Math.random() * SUPERRUFE.length)];
     sprechen(`${buchstabe}! ${text}`, tempo, ton);
+}
+
+// ── Hintergrundmusik (Web Audio API) ──────────────────────────────────────
+// Pentatonische C-Dur-Melodie, 32 Schläge, ~17 s Loop
+const MELODIE_NOTEN = [
+    [523.25,1],[659.25,1],[783.99,2],   // C5 E5 G5
+    [880.00,1],[783.99,1],[659.25,2],   // A5 G5 E5
+    [659.25,1],[523.25,1],[587.33,2],   // E5 C5 D5
+    [659.25,1],[783.99,1],[523.25,2],   // E5 G5 C5
+    [440.00,1],[523.25,1],[659.25,2],   // A4 C5 E5
+    [783.99,1],[659.25,1],[523.25,2],   // G5 E5 C5
+    [587.33,1],[659.25,1],[783.99,2],   // D5 E5 G5
+    [880.00,1],[659.25,1],[523.25,2],   // A5 E5 C5
+];
+const BASS_NOTEN = [
+    [130.81,4],[196.00,4],[220.00,4],[174.61,4],
+    [130.81,4],[196.00,4],[261.63,4],[196.00,4],
+];
+const AKKORD_NOTEN = [
+    [[261.63,329.63,392.00],4], // C
+    [[196.00,246.94,293.66],4], // G
+    [[220.00,261.63,329.63],4], // Am
+    [[174.61,220.00,261.63],4], // F
+    [[261.63,329.63,392.00],4], // C
+    [[196.00,246.94,293.66],4], // G
+    [[261.63,329.63,392.00],4], // C
+    [[196.00,246.94,293.66],4], // G
+];
+const BPM   = 108;
+const SCHLAG = 60 / BPM;
+
+let audioCtx     = null;
+let masterGain   = null;
+let melIdx = 0, bassIdx = 0, akkIdx = 0;
+let melZeit = 0, bassZeit = 0, akkZeit = 0;
+
+function musikStarten() {
+    if (audioCtx) {
+        // AudioContext nach Browser-Pause fortsetzen
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        return;
+    }
+    audioCtx   = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+
+    // Kompressor für wärmeren Klang
+    const komp = audioCtx.createDynamicsCompressor();
+    komp.threshold.value = -18;
+    komp.ratio.value     = 4;
+    komp.attack.value    = 0.05;
+    komp.release.value   = 0.3;
+
+    masterGain.connect(komp);
+    komp.connect(audioCtx.destination);
+    masterGain.gain.setValueAtTime(0.14, audioCtx.currentTime);
+
+    const jetzt = audioCtx.currentTime + 0.15;
+    melZeit = bassZeit = akkZeit = jetzt;
+    musikSchedulieren();
+}
+
+function musikNote(hz, start, dauer, lautst, typ, tiefpass = 0) {
+    const osc  = audioCtx.createOscillator();
+    const env  = audioCtx.createGain();
+    const att  = Math.min(0.04, dauer * 0.08);
+    const rel  = Math.min(0.12, dauer * 0.25);
+
+    osc.type = typ;
+    osc.frequency.setValueAtTime(hz, start);
+    env.gain.setValueAtTime(0, start);
+    env.gain.linearRampToValueAtTime(lautst, start + att);
+    env.gain.setValueAtTime(lautst * 0.75, start + dauer - rel);
+    env.gain.linearRampToValueAtTime(0, start + dauer);
+
+    if (tiefpass) {
+        const f = audioCtx.createBiquadFilter();
+        f.type = 'lowpass';
+        f.frequency.setValueAtTime(tiefpass, start);
+        f.Q.value = 0.8;
+        osc.connect(f); f.connect(env);
+    } else {
+        osc.connect(env);
+    }
+    env.connect(masterGain);
+    osc.start(start);
+    osc.stop(start + dauer + 0.02);
+}
+
+function musikSchedulieren() {
+    if (!audioCtx) return;
+    const bis = audioCtx.currentTime + 0.55;
+
+    while (melZeit < bis) {
+        const [hz, s] = MELODIE_NOTEN[melIdx];
+        musikNote(hz, melZeit, s * SCHLAG * 0.82, 0.16, 'triangle');
+        melZeit += s * SCHLAG;
+        melIdx   = (melIdx + 1) % MELODIE_NOTEN.length;
+    }
+    while (bassZeit < bis) {
+        const [hz, s] = BASS_NOTEN[bassIdx];
+        musikNote(hz, bassZeit, s * SCHLAG * 0.65, 0.18, 'sine');
+        bassZeit += s * SCHLAG;
+        bassIdx   = (bassIdx + 1) % BASS_NOTEN.length;
+    }
+    while (akkZeit < bis) {
+        const [noten, s] = AKKORD_NOTEN[akkIdx];
+        const d = s * SCHLAG * 0.88;
+        for (const hz of noten) musikNote(hz, akkZeit, d, 0.055, 'sine', 700);
+        akkZeit += s * SCHLAG;
+        akkIdx   = (akkIdx + 1) % AKKORD_NOTEN.length;
+    }
+    setTimeout(musikSchedulieren, 200);
 }
 
 // ── Spielzustand ───────────────────────────────────────────────────────────
@@ -142,6 +263,7 @@ function spielerErstellen() {
 }
 
 function spielStart() {
+    musikStarten();
     leben          = 3;
     punkte         = 0;
     buchstaben     = [];
