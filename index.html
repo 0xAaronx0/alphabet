@@ -97,7 +97,7 @@ function sprechEinheit(text, tempo, tonhöhe) {
 function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
     synth.cancel();
     aktuelleAussage = sprechEinheit(text, tempo, tonhöhe);
-    setTimeout(() => synth.speak(aktuelleAussage), 80);
+    synth.speak(aktuelleAussage);
 }
 
 // Buchstaben-Ansage: Einleitung normal, dann Buchstabe betont & langsamer
@@ -306,7 +306,6 @@ function spielerErstellen() {
 }
 
 function spielStart() {
-    musikStarten();
     aktiverLevel   = 1;
     leben          = 3;
     punkte         = 0;
@@ -318,8 +317,10 @@ function spielStart() {
     spawnTimer     = 50;
     schlangeNeuFuellen();
     ziel    = naechsterBuchstabe();
+    // Sprache VOR musikStarten() – Safari blockiert speak() nach AudioContext-Erstellung
+    buchstabeAnsagen(ziel);
     zustand = 'spielen';
-    setTimeout(() => buchstabeAnsagen(ziel), 300);
+    musikStarten();
 }
 
 function level2Starten() {
@@ -332,8 +333,8 @@ function level2Starten() {
     spawnTimer     = 50;
     zahlenNeuFuellen();
     ziel    = naechsteZahl();
+    buchstabeAnsagen(ziel);
     zustand = 'spielen';
-    setTimeout(() => buchstabeAnsagen(ziel), 300);
 }
 
 // ── Buchstaben/Zahlen-Spawn (kontinuierlich, Geschwindigkeit steigt) ───────
