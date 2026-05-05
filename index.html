@@ -81,32 +81,30 @@ function stimmenLaden() {
 stimmenLaden();
 if (typeof synth.onvoiceschanged !== 'undefined') synth.onvoiceschanged = stimmenLaden;
 
-function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
-    synth.cancel();
-    const u    = new SpeechSynthesisUtterance(text);
-    u.lang     = 'de-DE';
-    u.rate     = tempo;
-    u.pitch    = tonhöhe;
-    u.volume   = 1;
+function sprechEinheit(text, tempo, tonhöhe) {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang  = 'de-DE';
+    u.rate  = tempo;
+    u.pitch = tonhöhe;
+    u.volume = 1;
     if (deutscheStimme) u.voice = deutscheStimme;
-    synth.speak(u);
+    return u;
 }
 
-// Emotionale Erfolgsrufe – variiert, mit hoher Begeisterung
-const SUPERRUFE = [
-    ['Super! Das war fantastisch!',         1.05, 1.65],
-    ['Ja! Richtig! Toll gemacht!',          1.10, 1.70],
-    ['Wunderbar! Du bist klasse!',          0.95, 1.60],
-    ['Bravo! Weiter so, Superstar!',        1.00, 1.70],
-    ['Ja! Super! Du schaffst das!',         1.10, 1.65],
-    ['Toll! So wird das gemacht!',          1.00, 1.60],
-    ['Richtig! Du bist ein Profi!',         1.05, 1.70],
-    ['Ja! Wunderschön! Weiter so!',         1.00, 1.65],
-];
+function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
+    synth.cancel();
+    synth.speak(sprechEinheit(text, tempo, tonhöhe));
+}
 
-function superSprechen(buchstabe) {
-    const [text, tempo, ton] = SUPERRUFE[Math.floor(Math.random() * SUPERRUFE.length)];
-    sprechen(`${buchstabe}! ${text}`, tempo, ton);
+// Buchstaben-Ansage: Einleitung normal, dann Buchstabe betont & langsamer
+function buchstabeAnsagen(buchstabe) {
+    synth.cancel();
+    synth.speak(sprechEinheit('Finde den Buchstaben', 0.88, 1.2));
+    synth.speak(sprechEinheit(buchstabe, 0.45, 1.4));
+}
+
+function superSprechen() {
+    sprechen('Super!', 0.9, 1.5);
 }
 
 // ── Hintergrundmusik (Web Audio API) ──────────────────────────────────────
@@ -276,7 +274,7 @@ function spielStart() {
     schlangeNeuFuellen();
     ziel    = naechsterBuchstabe();
     zustand = 'spielen';
-    setTimeout(() => sprechen(`Finde den Buchstaben ${ziel}`), 300);
+    setTimeout(() => buchstabeAnsagen(ziel), 300);
 }
 
 // ── Buchstaben-Spawn (kontinuierlich, Geschwindigkeit steigt) ─────────────
@@ -345,7 +343,7 @@ function update() {
     if (flashTimer > 0) {
         flashTimer--;
         if (flashTimer === 0 && flashTyp === 'gut') {
-            sprechen(`Finde den Buchstaben ${ziel}`);
+            buchstabeAnsagen(ziel);
         }
         partikelUpdate();
         buchstabenSpawnen();
@@ -370,7 +368,7 @@ function update() {
                 punkte++;
                 explosion(b.x, b.y, b.farbe, 22);
                 explosion(spieler.x, spieler.y - PH / 2, '#FFD700', 12);
-                superSprechen(letzterTreffer);
+                superSprechen();
                 if (punkte >= 26) {
                     zustand = 'gewonnen';
                     sprechen('Wahnsinn! Du hast alle Buchstaben gefunden!', 0.9, 1.6);
