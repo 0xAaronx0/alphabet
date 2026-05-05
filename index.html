@@ -98,9 +98,7 @@ function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
 
 // Buchstaben-Ansage: Einleitung normal, dann Buchstabe betont & langsamer
 function buchstabeAnsagen(buchstabe) {
-    synth.cancel();
-    synth.speak(sprechEinheit('Finde', 0.88, 1.2));
-    synth.speak(sprechEinheit(buchstabe.toLowerCase(), 0.45, 1.4));
+    sprechen('Finde ' + buchstabe.toLowerCase(), 0.78, 1.25);
 }
 
 function superSprechen() {
