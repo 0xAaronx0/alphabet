@@ -95,7 +95,8 @@ function sprechEinheit(text, tempo, tonhöhe) {
 
 function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
     synth.cancel();
-    synth.speak(sprechEinheit(text, tempo, tonhöhe));
+    // kurze Pause nötig: Chrome/Safari-Bug – speak() direkt nach cancel() wird ignoriert
+    setTimeout(() => synth.speak(sprechEinheit(text, tempo, tonhöhe)), 80);
 }
 
 // Buchstaben-Ansage: Einleitung normal, dann Buchstabe betont & langsamer
@@ -420,7 +421,6 @@ function update() {
                 punkte++;
                 explosion(b.x, b.y, b.farbe, 22);
                 explosion(spieler.x, spieler.y - PH / 2, '#FFD700', 12);
-                superSprechen();
                 if (punkte >= 15) {
                     if (aktiverLevel === 1) {
                         zustand = 'levelzwischen';
@@ -431,6 +431,7 @@ function update() {
                     }
                     return;
                 }
+                superSprechen();
                 zielSetzen(naechstesZiel());
                 flashTimer = 90;
                 flashTyp   = 'gut';
