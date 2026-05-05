@@ -61,7 +61,8 @@ const ZAHLEN_FARBEN = FARBEN.slice(0, 21);
 
 // ── Sprache: ausschließlich Deutsch ───────────────────────────────────────
 const synth = window.speechSynthesis;
-let deutscheStimme = null;
+let deutscheStimme  = null;
+let aktuelleAussage = null; // verhindert Garbage-Collection der Utterance
 
 function stimmenLaden() {
     const stimmen = synth.getVoices();
@@ -95,8 +96,8 @@ function sprechEinheit(text, tempo, tonhöhe) {
 
 function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
     synth.cancel();
-    // kurze Pause nötig: Chrome/Safari-Bug – speak() direkt nach cancel() wird ignoriert
-    setTimeout(() => synth.speak(sprechEinheit(text, tempo, tonhöhe)), 80);
+    aktuelleAussage = sprechEinheit(text, tempo, tonhöhe);
+    setTimeout(() => synth.speak(aktuelleAussage), 80);
 }
 
 // Buchstaben-Ansage: Einleitung normal, dann Buchstabe betont & langsamer
