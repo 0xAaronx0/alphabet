@@ -167,23 +167,35 @@ function musikStarten() {
 function bellen() {
     if (!audioCtx) return;
     const t = audioCtx.currentTime;
-    // Two short bark bursts, slightly pitched down on second
-    [[0, 420, 0.11], [0.14, 340, 0.09]].forEach(([delay, freq, dur]) => {
+    [[0, 0.14], [0.22, 0.11]].forEach(([delay, dur]) => {
+        // Sawtooth + formant filter = "woof" attack
         const osc  = audioCtx.createOscillator();
+        const filt = audioCtx.createBiquadFilter();
         const env  = audioCtx.createGain();
-        const f    = audioCtx.createBiquadFilter();
         osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(freq, t + delay);
-        osc.frequency.exponentialRampToValueAtTime(freq * 0.55, t + delay + dur);
-        f.type = 'bandpass';
-        f.frequency.value = 900;
-        f.Q.value = 1.4;
+        osc.frequency.setValueAtTime(310, t + delay);
+        osc.frequency.exponentialRampToValueAtTime(110, t + delay + dur);
+        filt.type = 'bandpass';
+        filt.frequency.setValueAtTime(1700, t + delay);
+        filt.frequency.exponentialRampToValueAtTime(480, t + delay + dur);
+        filt.Q.value = 2.8;
         env.gain.setValueAtTime(0, t + delay);
-        env.gain.linearRampToValueAtTime(0.28, t + delay + 0.012);
+        env.gain.linearRampToValueAtTime(0.6, t + delay + 0.010);
         env.gain.exponentialRampToValueAtTime(0.001, t + delay + dur);
-        osc.connect(f); f.connect(env); env.connect(masterGain);
-        osc.start(t + delay);
-        osc.stop(t + delay + dur + 0.02);
+        osc.connect(filt); filt.connect(env); env.connect(audioCtx.destination);
+        osc.start(t + delay); osc.stop(t + delay + dur + 0.02);
+
+        // Low body thump for depth
+        const osc2 = audioCtx.createOscillator();
+        const env2 = audioCtx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(190, t + delay);
+        osc2.frequency.exponentialRampToValueAtTime(75, t + delay + dur * 0.75);
+        env2.gain.setValueAtTime(0, t + delay);
+        env2.gain.linearRampToValueAtTime(0.45, t + delay + 0.008);
+        env2.gain.exponentialRampToValueAtTime(0.001, t + delay + dur * 0.85);
+        osc2.connect(env2); env2.connect(audioCtx.destination);
+        osc2.start(t + delay); osc2.stop(t + delay + dur + 0.02);
     });
 }
 
@@ -519,8 +531,6 @@ function wolkeZeichnen(x, y, groesse, deckkraft) {
     ctx.restore();
 }
 
-// ── Sky von PAW Patrol ─────────────────────────────────────────────────────
-// Farbpalette exakt nach Original
 // ── Marshall von PAW Patrol (Dalmatiner, Feuerwehr) ───────────────────────
 const M = {
     fell      : '#FFFFFF',
@@ -528,258 +538,271 @@ const M = {
     uniform   : '#D32F2F',
     helmRot   : '#C62828',
     helmDunkel: '#7B0000',
-    auge      : '#795548',
-    augeInnen : '#3E2723',
-    nase      : '#1C1C1C',
-    mund      : '#A07070',
+    auge      : '#6D4C41',
+    augeInnen : '#1A0800',
+    nase      : '#1A1A1A',
+    mund      : '#D47070',
     gold      : '#FFD700',
 };
 
 function spielerZeichnen() {
     const s       = spieler;
-    const schwung = s.aufBoden ? Math.sin(s.beinPhase) * 18 : 0;
+    const schwung = s.aufBoden ? Math.sin(s.beinPhase) * 16 : 0;
     const blinzel = s.blinzelTimer > 170;
 
     ctx.save();
     ctx.translate(s.x, s.y);
     if (s.richtung === -1) ctx.scale(-1, 1);
 
-    // Schatten
     ctx.fillStyle = 'rgba(0,0,0,0.18)';
     ctx.beginPath();
-    ctx.ellipse(0, 3, 20, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 3, 22, 6, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Schwanz (Dalmatiner: aufgerichtet, wackelt)
     marshallSchwanz(s.beinPhase);
 
     // Hinterbein
     ctx.save();
-    ctx.translate(-8, -16);
+    ctx.translate(-10, -12);
     ctx.rotate(-schwung * Math.PI / 180 * 0.8);
     ctx.fillStyle = M.fell;
-    ctx.beginPath(); ctx.ellipse(0, -5, 6, 11, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, -6, 6, 12, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = M.fleck;
-    ctx.beginPath(); ctx.ellipse(2, -3, 3, 2, 0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(2, -2, 3, 2, 0.5, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = M.fell;
-    ctx.beginPath(); ctx.ellipse(2, 8, 7, 5, 0.25, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(2, 8, 8, 5, 0.25, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
-    // Körper + Uniform
     marshallKoerper();
 
-    // Vorderarm
+    // Vorderarm (roter Ärmel)
     ctx.save();
-    ctx.translate(13, -40);
-    ctx.rotate(0.35 - schwung * Math.PI / 180 * 0.55);
+    ctx.translate(14, -42);
+    ctx.rotate(0.3 - schwung * Math.PI / 180 * 0.5);
+    ctx.fillStyle = M.uniform;
+    ctx.beginPath(); ctx.ellipse(0, -3, 6, 11, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = M.fell;
-    ctx.beginPath(); ctx.ellipse(0, -2, 5, 10, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = M.fleck;
-    ctx.beginPath(); ctx.ellipse(1, 2, 2.5, 2, 0.3, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = M.fell;
-    ctx.beginPath(); ctx.ellipse(-1, 10, 6, 5, -0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-1, 9, 7, 5, -0.2, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
-    // Ohren
+    // Ohren vor Kopf zeichnen (damit Kopf sie überlappt)
     marshallOhren(s.beinPhase);
-
-    // Kopf
     marshallKopf(blinzel);
 
     ctx.restore();
 }
 
 function marshallSchwanz(phase) {
-    const w = Math.sin(phase * 1.8) * 8;
+    const w = Math.sin(phase * 1.8) * 9;
     ctx.fillStyle = M.fell;
     ctx.beginPath();
-    ctx.moveTo(-13, -38);
-    ctx.quadraticCurveTo(-24 + w * 0.5, -54, -19 + w, -68);
-    ctx.quadraticCurveTo(-14 + w, -66, -11 + w * 0.5, -54);
-    ctx.quadraticCurveTo(-14 + w * 0.2, -42, -13, -38);
+    ctx.moveTo(-14, -38);
+    ctx.quadraticCurveTo(-26 + w * 0.5, -54, -20 + w, -68);
+    ctx.quadraticCurveTo(-15 + w, -66, -12 + w * 0.4, -54);
+    ctx.quadraticCurveTo(-15 + w * 0.2, -42, -14, -38);
     ctx.fill();
     ctx.fillStyle = M.fleck;
-    ctx.beginPath(); ctx.ellipse(-17 + w * 0.5, -57, 4, 3, 0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-18 + w * 0.4, -56, 4, 2.5, 0.4, 0, Math.PI * 2); ctx.fill();
 }
 
 function marshallKoerper() {
     // Weißer Fell-Körper
     ctx.fillStyle = M.fell;
     ctx.beginPath();
-    ctx.ellipse(0, -36, 17, 21, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -34, 18, 22, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Rote Feuerwehr-Uniform
     ctx.fillStyle = M.uniform;
     ctx.beginPath();
-    ctx.ellipse(0, -36, 12, 17, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -40, 14, 17, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Weißes Bauchfeld
     ctx.fillStyle = M.fell;
     ctx.beginPath();
-    ctx.ellipse(0, -30, 5, 9, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -29, 6, 10, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Knochen-Abzeichen
-    knochenAbzeichen(0, -44, 6);
+    // Knochen-Abzeichen (goldenes Badge)
+    knochenAbzeichen(0, -46, 6);
 
-    // Schwarze Dalmatiner-Flecken auf Körper
+    // Dalmatiner-Flecken auf Körper
     ctx.fillStyle = M.fleck;
-    ctx.beginPath(); ctx.ellipse(-10, -42, 5, 3.5, -0.4, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse( 9,  -30, 4, 3,    0.3, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(-6,  -24, 3, 2.5,  0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-11, -46, 5, 3.5, -0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( 10, -29, 4, 3,    0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( -6, -22, 3.5, 2.5, 0.2, 0, Math.PI * 2); ctx.fill();
 }
 
 function knochenAbzeichen(x, y, s) {
     ctx.fillStyle = M.gold;
-    // Stab
     rundesRechteck(x - s, y - s * 0.22, s * 2, s * 0.44, s * 0.2);
     ctx.fill();
-    // Vier Knubbel
     for (const [dx, dy] of [[-s, -s*0.32], [-s, s*0.32], [s, -s*0.32], [s, s*0.32]]) {
         ctx.beginPath(); ctx.arc(x + dx, y + dy, s * 0.38, 0, Math.PI * 2); ctx.fill();
     }
 }
 
 function marshallOhren(phase) {
-    const w = Math.sin(phase * 0.7) * 2;
+    // Floppy hound ears — hängen seitlich am Kopf herunter
+    const sw = Math.sin(phase * 0.8) * 2;
 
+    // Linkes Ohr
     ctx.save();
-    ctx.translate(-17, -62);
-    ctx.rotate(-0.25 + w * 0.012);
+    ctx.translate(-23, -70);
+    ctx.rotate(-0.12 + sw * 0.012);
     ctx.fillStyle = M.fell;
-    ctx.beginPath(); ctx.ellipse(0, 10, 9, 21, -0.08, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(5, 0);
+    ctx.bezierCurveTo(-2, 6, -13, 18, -11, 34);
+    ctx.bezierCurveTo(-9, 44, 2, 47, 7, 43);
+    ctx.bezierCurveTo(12, 38, 12, 24, 9, 10);
+    ctx.bezierCurveTo(8, 4, 7, 1, 5, 0);
+    ctx.closePath();
+    ctx.fill();
     ctx.fillStyle = M.fleck;
-    ctx.beginPath(); ctx.ellipse(-1, 12, 5, 8, -0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-1, 26, 4, 7, -0.15, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
+    // Rechtes Ohr
     ctx.save();
-    ctx.translate(19, -62);
-    ctx.rotate(0.25 - w * 0.012);
+    ctx.translate(23, -70);
+    ctx.rotate(0.12 - sw * 0.012);
     ctx.fillStyle = M.fell;
-    ctx.beginPath(); ctx.ellipse(0, 10, 9, 21, 0.08, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-5, 0);
+    ctx.bezierCurveTo(2, 6, 13, 18, 11, 34);
+    ctx.bezierCurveTo(9, 44, -2, 47, -7, 43);
+    ctx.bezierCurveTo(-12, 38, -12, 24, -9, 10);
+    ctx.bezierCurveTo(-8, 4, -7, 1, -5, 0);
+    ctx.closePath();
+    ctx.fill();
     ctx.fillStyle = M.fleck;
-    ctx.beginPath(); ctx.ellipse(1, 8, 4, 6, 0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(1, 24, 4, 7, 0.15, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 }
 
 function marshallKopf(blinzel) {
-    // Weißer Fell-Kopf
+    // Großer runder weißer Kopf
     ctx.fillStyle = M.fell;
     ctx.beginPath();
-    ctx.arc(0, -64, 23, 0, Math.PI * 2);
+    ctx.arc(0, -66, 27, 0, Math.PI * 2);
     ctx.fill();
 
     // Dalmatiner-Flecken auf Kopf
     ctx.fillStyle = M.fleck;
-    ctx.beginPath(); ctx.ellipse( 10, -72, 6,   4,   0.5,  0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(-12, -60, 4,   3,  -0.3,  0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(  8, -56, 3,   2.5, 0.4,  0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( 13, -76, 7, 5,   0.5,  0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-15, -62, 5, 3.5,-0.3,  0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(  9, -54, 4, 3,   0.4,  0, Math.PI * 2); ctx.fill();
 
-    // Helles Gesichtsfeld
+    // Helles Gesichtsfeld (Schnauzenbereich)
     ctx.fillStyle = '#FFFAFA';
     ctx.beginPath();
-    ctx.ellipse(0, -58, 16, 18, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -58, 20, 22, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // ── FEUERWEHRHELM ─────────────────────────────────────────────────────
-    // Rote Helmkuppel
+    // Rote Kuppel — bedeckt obere Kopfhälfte
     ctx.fillStyle = M.helmRot;
     ctx.beginPath();
-    ctx.arc(0, -67, 25, Math.PI + 0.12, 2 * Math.PI - 0.12);
+    ctx.arc(0, -66, 29, Math.PI + 0.1, 2 * Math.PI - 0.1);
     ctx.closePath();
     ctx.fill();
 
-    // Weißer Querstreifen
-    ctx.fillStyle = '#FFFFFF';
+    // Weißer Querstreifen (clipped auf Kuppel)
     ctx.save();
     ctx.beginPath();
-    ctx.arc(0, -67, 25, Math.PI + 0.12, 2 * Math.PI - 0.12);
+    ctx.arc(0, -66, 29, Math.PI + 0.1, 2 * Math.PI - 0.1);
     ctx.closePath();
     ctx.clip();
-    ctx.fillRect(-26, -72, 52, 7);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(-30, -74, 60, 8);
     ctx.restore();
 
     // Dunkler Helmrand
     ctx.strokeStyle = M.helmDunkel;
-    ctx.lineWidth   = 4;
+    ctx.lineWidth   = 3;
     ctx.beginPath();
-    ctx.arc(0, -67, 25, Math.PI + 0.12, 2 * Math.PI - 0.12);
+    ctx.arc(0, -66, 29, Math.PI + 0.1, 2 * Math.PI - 0.1);
     ctx.stroke();
 
-    // Vorderschirm (Feuerwehrhelm-typisch)
+    // Vorderschirm (breiter, flacher Feuerwehrbrim)
     ctx.fillStyle = M.helmDunkel;
     ctx.beginPath();
-    ctx.ellipse(15, -57, 17, 5, -0.14, 0, Math.PI * 2);
+    ctx.ellipse(6, -54, 30, 6.5, -0.08, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = M.helmRot;
     ctx.beginPath();
-    ctx.ellipse(14, -58, 15, 4, -0.14, 0, Math.PI * 2);
+    ctx.ellipse(5, -55.5, 28, 5, -0.08, 0, Math.PI * 2);
     ctx.fill();
 
-    // Nummer "3" auf Helm
-    ctx.fillStyle   = M.gold;
-    ctx.font        = 'bold 12px Arial';
-    ctx.textAlign   = 'center';
+    // "03" auf Helm
+    ctx.fillStyle    = M.gold;
+    ctx.font         = 'bold 13px Arial';
+    ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('3', 1, -77);
+    ctx.fillText('03', 1, -81);
 
     // ── AUGEN ─────────────────────────────────────────────────────────────
     if (blinzel) {
         ctx.strokeStyle = M.augeInnen;
         ctx.lineWidth   = 3;
         ctx.lineCap     = 'round';
-        ctx.beginPath(); ctx.moveTo(-15, -60); ctx.lineTo(-6, -60); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(  6, -60); ctx.lineTo(15, -60); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-16, -60); ctx.lineTo(-7, -60); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(  7, -60); ctx.lineTo(16, -60); ctx.stroke();
     } else {
+        // Linkes Auge — groß, ausdrucksstark
         ctx.fillStyle = 'white';
-        ctx.beginPath(); ctx.ellipse(-10, -60, 7, 8.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(-11, -60, 8.5, 10, 0, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = M.auge;
-        ctx.beginPath(); ctx.ellipse(-10, -60, 5, 6.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(-11, -60, 6,   7.5, 0, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = M.augeInnen;
-        ctx.beginPath(); ctx.arc(-10, -60, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(-11, -60, 3.5, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = 'white';
-        ctx.beginPath(); ctx.arc(-8, -63, 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(-8.5, -64, 2.8, 2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(-14, -61.5, 1.2, 0, Math.PI * 2); ctx.fill();
 
+        // Rechtes Auge
         ctx.fillStyle = 'white';
-        ctx.beginPath(); ctx.ellipse(10, -60, 7, 8.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(11, -60, 8.5, 10, 0, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = M.auge;
-        ctx.beginPath(); ctx.ellipse(10, -60, 5, 6.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(11, -60, 6,   7.5, 0, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = M.augeInnen;
-        ctx.beginPath(); ctx.arc(10, -60, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(11, -60, 3.5, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = 'white';
-        ctx.beginPath(); ctx.arc(12, -63, 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(13.5, -64, 2.8, 2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(8, -61.5, 1.2, 0, Math.PI * 2); ctx.fill();
     }
 
     // ── SCHNAUZE ──────────────────────────────────────────────────────────
+    // Weißer Schnauzenvorsprung
     ctx.fillStyle = '#FFF0F0';
     ctx.beginPath();
-    ctx.ellipse(0, -47, 10, 8, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -47, 13, 11, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // Große schwarze Nase
     ctx.fillStyle = M.nase;
     ctx.beginPath();
-    ctx.ellipse(0, -53, 4.5, 3.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -54, 6, 5, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.beginPath();
-    ctx.ellipse(-1.5, -54.5, 1.5, 1, 0, 0, Math.PI * 2);
+    ctx.ellipse(-2, -56, 2, 1.4, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // Philtrum
     ctx.strokeStyle = M.nase;
-    ctx.lineWidth   = 1.5;
-    ctx.beginPath(); ctx.moveTo(0, -50); ctx.lineTo(0, -46); ctx.stroke();
-
-    ctx.strokeStyle = M.mund;
-    ctx.lineWidth   = 2;
+    ctx.lineWidth   = 1.8;
     ctx.lineCap     = 'round';
+    ctx.beginPath(); ctx.moveTo(0, -49); ctx.lineTo(0, -44); ctx.stroke();
+
+    // Lächeln
+    ctx.strokeStyle = M.mund;
+    ctx.lineWidth   = 2.2;
     ctx.beginPath();
-    ctx.moveTo(-7, -45);
-    ctx.quadraticCurveTo(0, -39, 7, -45);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, -45); ctx.lineTo(0, -39);
+    ctx.moveTo(-9, -44);
+    ctx.quadraticCurveTo(0, -38, 9, -44);
     ctx.stroke();
 }
 
