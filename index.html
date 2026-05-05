@@ -39,13 +39,13 @@ window.addEventListener('resize', resize);
 resize();
 
 // ── Konstanten ─────────────────────────────────────────────────────────────
-const GROUND   = H - 90;
-const PW       = 44;
-const PH       = 72;
-const LETTER_R = 36;
-const GRAVITY  = 0.65;
-const JUMP_V   = -15;
-const GLOW_UNTIL = 6;   // Leuchteffekt für die ersten 6 gefundenen Buchstaben
+const GROUND     = H - 90;
+const PW         = 44;
+const PH         = 72;
+const LETTER_R   = 36;
+const GRAVITY    = 0.65;
+const JUMP_V     = -15;
+const GLOW_UNTIL = 6;
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 const FARBEN   = [
@@ -83,15 +83,32 @@ function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
     synth.speak(u);
 }
 
+// Emotionale Erfolgsrufe – variiert, mit hoher Begeisterung
+const SUPERRUFE = [
+    ['Super! Das war fantastisch!',         1.05, 1.65],
+    ['Ja! Richtig! Toll gemacht!',          1.10, 1.70],
+    ['Wunderbar! Du bist klasse!',          0.95, 1.60],
+    ['Bravo! Weiter so, Superstar!',        1.00, 1.70],
+    ['Ja! Super! Du schaffst das!',         1.10, 1.65],
+    ['Toll! So wird das gemacht!',          1.00, 1.60],
+    ['Richtig! Du bist ein Profi!',         1.05, 1.70],
+    ['Ja! Wunderschön! Weiter so!',         1.00, 1.65],
+];
+
+function superSprechen(buchstabe) {
+    const [text, tempo, ton] = SUPERRUFE[Math.floor(Math.random() * SUPERRUFE.length)];
+    sprechen(`${buchstabe}! ${text}`, tempo, ton);
+}
+
 // ── Spielzustand ───────────────────────────────────────────────────────────
 let zustand, leben, punkte, ziel, buchstaben, partikel, spieler, tasten;
 let buchstabenSchlange = [];
-let flashTimer = 0;
-let flashTyp   = '';        // 'gut' | 'schlecht'
+let flashTimer   = 0;
+let flashTyp     = '';
 let letzterTreffer = '';
-let spawnTimer = 50;
+let spawnTimer   = 50;
 let lueckenZaehler = 0;
-const MAX_LUECKE = 5;       // nach spätestens N falschen kommt das Ziel
+const MAX_LUECKE = 5;
 
 function mischen(a) {
     const b = [...a];
@@ -103,7 +120,6 @@ function mischen(a) {
 }
 
 function schlangeNeuFuellen() { buchstabenSchlange = mischen([...ALPHABET]); }
-
 function naechsterBuchstabe() {
     if (!buchstabenSchlange.length) schlangeNeuFuellen();
     return buchstabenSchlange.pop();
@@ -141,14 +157,21 @@ function spielStart() {
     setTimeout(() => sprechen(`Finde den Buchstaben ${ziel}`), 300);
 }
 
-// ── Buchstaben-Spawn (kontinuierlich) ──────────────────────────────────────
+// ── Buchstaben-Spawn (kontinuierlich, Geschwindigkeit steigt) ─────────────
 function buchstabenSpawnen() {
     spawnTimer--;
     if (spawnTimer > 0) return;
-    spawnTimer = 52 + Math.floor(Math.random() * 36);
 
-    const erzwingeZiel = lueckenZaehler >= MAX_LUECKE;
-    const nimmZiel     = erzwingeZiel || Math.random() < 0.3;
+    // Intervall und Basisgeschwindigkeit abhängig von Punktestand
+    const intervall   = Math.max(28, 52 - Math.floor(punkte * 1.1));
+    spawnTimer        = intervall + Math.floor(Math.random() * 22);
+    const basisGeschw = 1.0 + punkte * 0.065;
+
+    // Maximal EIN Zielbuchstabe gleichzeitig auf dem Bildschirm
+    const zielSichtbar = buchstaben.some(b => !b.weg && b.istZiel);
+
+    const erzwingeZiel = !zielSichtbar && lueckenZaehler >= MAX_LUECKE;
+    const nimmZiel     = !zielSichtbar && (erzwingeZiel || Math.random() < 0.3);
 
     let buchstabe;
     if (nimmZiel) {
@@ -156,22 +179,21 @@ function buchstabenSpawnen() {
         lueckenZaehler = 0;
     } else {
         const falsche = ALPHABET.filter(l => l !== ziel);
-        buchstabe      = falsche[Math.floor(Math.random() * falsche.length)];
-        lueckenZaehler++;
+        buchstabe     = falsche[Math.floor(Math.random() * falsche.length)];
+        if (!zielSichtbar) lueckenZaehler++;
     }
 
-    const x        = 68 + Math.random() * (W - 136);
+    const x       = 68 + Math.random() * (W - 136);
     const leuchtet = punkte < GLOW_UNTIL;
+    const vy       = Math.min(basisGeschw + Math.random() * 0.4, 3.8);
 
     buchstaben.push({
-        buchstabe,
-        x, y        : -LETTER_R,
-        vy          : 1.15 + Math.random() * 0.55,
-        istZiel     : buchstabe === ziel,
-        farbe       : FARBEN[ALPHABET.indexOf(buchstabe)],
-        leuchtet    : leuchtet && buchstabe === ziel,
-        glowT       : 0,
-        weg         : false
+        buchstabe, x, y: -LETTER_R, vy,
+        istZiel  : buchstabe === ziel,
+        farbe    : FARBEN[ALPHABET.indexOf(buchstabe)],
+        leuchtet : leuchtet && buchstabe === ziel,
+        glowT    : 0,
+        weg      : false
     });
 }
 
@@ -183,8 +205,7 @@ function explosion(x, y, farbe, n = 18) {
         partikel.push({
             x, y,
             vx: Math.cos(a) * s, vy: Math.sin(a) * s - 2,
-            farbe,
-            r: 5 + Math.random() * 7,
+            farbe, r: 5 + Math.random() * 7,
             leben: 1, abbau: 0.018 + Math.random() * 0.015
         });
     }
@@ -209,7 +230,6 @@ function update() {
     spielerPhysik();
     buchstabenSpawnen();
 
-    // Kollisionsprüfung
     const cx = spieler.x;
     const cy = spieler.y - PH / 2;
     for (const b of buchstaben) {
@@ -223,10 +243,10 @@ function update() {
                 punkte++;
                 explosion(b.x, b.y, b.farbe, 22);
                 explosion(spieler.x, spieler.y - PH / 2, '#FFD700', 12);
-                sprechen(`Super! ${letzterTreffer}!`, 0.75, 1.4);
+                superSprechen(letzterTreffer);
                 if (punkte >= 26) {
                     zustand = 'gewonnen';
-                    sprechen('Wahnsinn! Du hast alle Buchstaben gefunden!');
+                    sprechen('Wahnsinn! Du hast alle Buchstaben gefunden!', 0.9, 1.6);
                     return;
                 }
                 zielSetzen(naechsterBuchstabe());
@@ -258,17 +278,13 @@ function spielerPhysik() {
     if (tasten['ArrowLeft']  || tasten['a'] || tasten['A']) { spieler.x -= spd; spieler.richtung = -1; }
     if (tasten['ArrowRight'] || tasten['d'] || tasten['D']) { spieler.x += spd; spieler.richtung =  1; }
     if ((tasten['ArrowUp'] || tasten[' '] || tasten['w'] || tasten['W']) && spieler.aufBoden) {
-        spieler.vy       = JUMP_V;
+        spieler.vy = JUMP_V;
         spieler.aufBoden = false;
     }
     spieler.x = Math.max(PW / 2, Math.min(W - PW / 2, spieler.x));
     spieler.vy += GRAVITY;
     spieler.y  += spieler.vy;
-    if (spieler.y >= GROUND) {
-        spieler.y        = GROUND;
-        spieler.vy       = 0;
-        spieler.aufBoden = true;
-    }
+    if (spieler.y >= GROUND) { spieler.y = GROUND; spieler.vy = 0; spieler.aufBoden = true; }
     const laeuft = tasten['ArrowLeft'] || tasten['ArrowRight'] || tasten['a'] || tasten['d'];
     if (spieler.aufBoden && laeuft) spieler.beinPhase += 0.21;
     spieler.blinzelTimer = (spieler.blinzelTimer + 1) % 180;
@@ -277,7 +293,7 @@ function spielerPhysik() {
 function buchstabenBewegen() {
     for (const b of buchstaben) {
         if (b.weg) continue;
-        b.y     += b.vy;
+        b.y    += b.vy;
         b.glowT += 0.06;
         if (b.y > H + LETTER_R) b.weg = true;
     }
@@ -287,15 +303,12 @@ function buchstabenBewegen() {
 
 function partikelUpdate() {
     for (const p of partikel) {
-        p.x     += p.vx;
-        p.y     += p.vy;
-        p.vy    += 0.25;
-        p.leben -= p.abbau;
+        p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.leben -= p.abbau;
     }
     partikel = partikel.filter(p => p.leben > 0);
 }
 
-// ── Zeichnen ───────────────────────────────────────────────────────────────
+// ── Zeichnen-Hilfsfunktionen ───────────────────────────────────────────────
 function rundesRechteck(x, y, b, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -310,12 +323,26 @@ function rundesRechteck(x, y, b, h, r) {
     ctx.closePath();
 }
 
+function sternZeichnen(mx, my, r) {
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+        const ao = { x: mx + r       * Math.cos((i*4*Math.PI/5) - Math.PI/2),
+                     y: my + r       * Math.sin((i*4*Math.PI/5) - Math.PI/2) };
+        const ai = { x: mx + r * 0.4 * Math.cos(((i*4+2)*Math.PI/5) - Math.PI/2),
+                     y: my + r * 0.4 * Math.sin(((i*4+2)*Math.PI/5) - Math.PI/2) };
+        i === 0 ? ctx.moveTo(ao.x, ao.y) : ctx.lineTo(ao.x, ao.y);
+        ctx.lineTo(ai.x, ai.y);
+    }
+    ctx.closePath();
+    ctx.fill();
+}
+
+// ── Hintergrund ────────────────────────────────────────────────────────────
 function hintergrundZeichnen() {
-    // Tageshimmel – passend zu Sky von PAW Patrol
     const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0,   '#4FC3F7');
-    grad.addColorStop(0.55,'#81D4FA');
-    grad.addColorStop(1,   '#B3E5FC');
+    grad.addColorStop(0,    '#4FC3F7');
+    grad.addColorStop(0.55, '#81D4FA');
+    grad.addColorStop(1,    '#B3E5FC');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
@@ -324,12 +351,11 @@ function hintergrundZeichnen() {
     wolkeZeichnen(580, 90, 0.9,  0.85);
     wolkeZeichnen(730, 40, 0.6,  0.8);
 
-    // Boden
-    const bodenGrad = ctx.createLinearGradient(0, GROUND + PH, 0, H);
-    bodenGrad.addColorStop(0,    '#66BB6A');
-    bodenGrad.addColorStop(0.25, '#4CAF50');
-    bodenGrad.addColorStop(1,    '#2E7D32');
-    ctx.fillStyle = bodenGrad;
+    const bg = ctx.createLinearGradient(0, GROUND + PH, 0, H);
+    bg.addColorStop(0,    '#66BB6A');
+    bg.addColorStop(0.25, '#4CAF50');
+    bg.addColorStop(1,    '#2E7D32');
+    ctx.fillStyle = bg;
     ctx.fillRect(0, GROUND + PH, W, H - GROUND - PH);
 
     ctx.strokeStyle = '#81C784';
@@ -356,211 +382,338 @@ function wolkeZeichnen(x, y, groesse, deckkraft) {
 }
 
 // ── Sky von PAW Patrol ─────────────────────────────────────────────────────
+// Farbpalette exakt nach Original
+const SKY = {
+    fell      : '#FF69B4',   // Hauptfell
+    fellHell  : '#FFB6C1',   // Innenseiten, Muster
+    fellDunkel: '#E91E8C',   // Uniform/Akzente
+    bauch     : '#FFF0F5',   // helles Bauchfeld
+    helm      : '#FFFFFF',   // Helm weiß
+    helmBand  : '#FF69B4',   // Helmrand
+    visier    : 'rgba(80,190,255,0.68)',
+    visierRand: '#E91E8C',
+    auge      : '#1E90FF',   // blaue Augen
+    augeInnen : '#0A2A6E',
+    nase      : '#1A0010',
+    mund      : '#C06080',
+    abzeichen : '#FFD700',
+};
+
 function spielerZeichnen() {
-    const s = spieler;
+    const s       = spieler;
+    const schwung = s.aufBoden ? Math.sin(s.beinPhase) * 18 : 0;
+    const blinzel = s.blinzelTimer > 170;
+
     ctx.save();
     ctx.translate(s.x, s.y);
     if (s.richtung === -1) ctx.scale(-1, 1);
 
-    // Schatten
+    // 1. Schatten
     ctx.fillStyle = 'rgba(0,0,0,0.18)';
     ctx.beginPath();
-    ctx.ellipse(0, 5, 22, 7, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 3, 20, 6, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    const schwung = s.aufBoden ? Math.sin(s.beinPhase) * 22 : 0;
+    // 2. Flügel (nur beim Springen – Skys Markenzeichen)
+    if (!s.aufBoden) skyFluegelZeichnen();
 
-    // Flügel (nur in der Luft)
-    if (!s.aufBoden) fluegelZeichnen();
+    // 3. Schwanz (mehrere Kreise = fluffig)
+    skySchwanzZeichnen(s.beinPhase);
 
-    // Schwanz
+    // 4. Hinterbein (hinter Körper)
     ctx.save();
-    ctx.strokeStyle = '#FF69B4';
-    ctx.lineWidth   = 7;
-    ctx.lineCap     = 'round';
-    const schwanzW  = Math.sin(s.beinPhase * 1.8) * 6;
-    ctx.beginPath();
-    ctx.moveTo(-14, -PH + 44);
-    ctx.quadraticCurveTo(-30 + schwanzW, -PH + 26, -22 + schwanzW * 0.5, -PH + 12);
-    ctx.stroke();
-    ctx.fillStyle = '#FFB6C1';
-    ctx.beginPath();
-    ctx.arc(-22 + schwanzW * 0.5, -PH + 10, 7, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.translate(-8, -16);
+    ctx.rotate(-schwung * Math.PI / 180 * 0.8);
+    ctx.fillStyle = SKY.fell;
+    ctx.beginPath(); ctx.ellipse(0, -5, 6, 11, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = SKY.fellHell;
+    ctx.beginPath(); ctx.ellipse(2, 8, 7, 5, 0.25, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
-    // Hinterbein
-    ctx.fillStyle = '#FF69B4';
+    // 5. Körper / Uniform
+    skyKoerperZeichnen();
+
+    // 6. Vorderarm (vor Körper, animiert)
     ctx.save();
-    ctx.translate(-8, -PH + 63);
-    ctx.rotate(-schwung * Math.PI / 180);
-    rundesRechteck(-5, 0, 11, 23, 3); ctx.fill();
-    ctx.fillStyle = '#FFB6C1';
-    ctx.beginPath(); ctx.ellipse(0, 25, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.translate(13, -40);
+    ctx.rotate(0.35 - schwung * Math.PI / 180 * 0.55);
+    ctx.fillStyle = SKY.fell;
+    ctx.beginPath(); ctx.ellipse(0, -2, 5, 10, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = SKY.fellHell;
+    ctx.beginPath(); ctx.ellipse(-1, 10, 6, 5, -0.2, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
-    // Körper
-    ctx.fillStyle = '#FF69B4';
-    ctx.beginPath();
-    ctx.ellipse(1, -PH + 46, 19, 25, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // 7. Ohren (lange, hängende Schlappohren)
+    skyOhrenZeichnen(s.beinPhase);
 
-    // PAW-Patrol-Weste
-    ctx.fillStyle = '#E91E8C';
-    ctx.beginPath();
-    ctx.ellipse(1, -PH + 46, 16, 21, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Stern-Abzeichen
-    ctx.fillStyle = '#FFD700';
-    sternZeichnen(1, -PH + 44, 8);
-
-    // Vorderbein
-    ctx.fillStyle = '#FF69B4';
-    ctx.save();
-    ctx.translate(10, -PH + 56);
-    ctx.rotate(schwung * Math.PI / 180 * 0.7);
-    rundesRechteck(-5, 0, 11, 22, 3); ctx.fill();
-    ctx.fillStyle = '#FFB6C1';
-    ctx.beginPath(); ctx.ellipse(0, 24, 7, 5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-
-    // Hals
-    ctx.fillStyle = '#FF69B4';
-    ctx.beginPath();
-    ctx.ellipse(2, -PH + 24, 11, 9, -0.15, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Ohren (hinter Helm)
-    const ohrWackeln = Math.sin(s.beinPhase * 0.8) * 5;
-    ctx.fillStyle = '#FF69B4';
-    ctx.save();
-    ctx.translate(-15, -PH + 8);
-    ctx.rotate(-0.4 + ohrWackeln * 0.018);
-    ctx.beginPath(); ctx.ellipse(0, 7, 7, 16, -0.22, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#FFB6C1';
-    ctx.beginPath(); ctx.ellipse(0, 8, 4, 11, -0.22, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-
-    ctx.fillStyle = '#FF69B4';
-    ctx.save();
-    ctx.translate(19, -PH + 8);
-    ctx.rotate(0.4 - ohrWackeln * 0.018);
-    ctx.beginPath(); ctx.ellipse(0, 7, 7, 16, 0.22, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#FFB6C1';
-    ctx.beginPath(); ctx.ellipse(0, 8, 4, 11, 0.22, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-
-    // Kopf
-    ctx.fillStyle = '#FF69B4';
-    ctx.beginPath();
-    ctx.arc(2, -PH + 13, 20, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Pilotenhelm – Kalotte
-    ctx.fillStyle = '#FFB6C1';
-    ctx.beginPath();
-    ctx.arc(2, -PH + 10, 21, Math.PI + 0.25, -0.25);
-    ctx.fill();
-
-    // Helmband
-    ctx.strokeStyle = '#FF69B4';
-    ctx.lineWidth   = 3;
-    ctx.beginPath();
-    ctx.arc(2, -PH + 10, 21, -0.25, Math.PI + 0.25);
-    ctx.stroke();
-
-    // Visier / Brille
-    ctx.fillStyle = 'rgba(80,200,255,0.5)';
-    ctx.beginPath();
-    ctx.ellipse(2, -PH + 13, 14, 7, 0, 0, Math.PI);
-    ctx.fill();
-    ctx.strokeStyle = '#FF69B4';
-    ctx.lineWidth   = 2;
-    ctx.stroke();
-
-    // Brillenbügel
-    ctx.strokeStyle = '#E91E8C';
-    ctx.lineWidth   = 2.5;
-    ctx.beginPath(); ctx.moveTo(-19, -PH + 13); ctx.lineTo(-12, -PH + 13); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo( 23, -PH + 13); ctx.lineTo( 16, -PH + 13); ctx.stroke();
-
-    // Augen
-    const blinzeln = s.blinzelTimer > 170;
-    if (blinzeln) {
-        ctx.fillStyle = '#1565C0';
-        ctx.fillRect(-9, -PH + 15, 9, 3);
-        ctx.fillRect( 4, -PH + 15, 9, 3);
-    } else {
-        ctx.fillStyle = '#1E90FF';
-        ctx.beginPath(); ctx.arc(-5, -PH + 16, 5, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc( 9, -PH + 16, 5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#0D47A1';
-        ctx.beginPath(); ctx.arc(-4, -PH + 16, 3, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(10, -PH + 16, 3, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'white';
-        ctx.beginPath(); ctx.arc(-3, -PH + 15, 1.3, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(11, -PH + 15, 1.3, 0, Math.PI * 2); ctx.fill();
-    }
-
-    // Schnauze
-    ctx.fillStyle = '#FFD0E8';
-    ctx.beginPath();
-    ctx.ellipse(2, -PH + 21, 8, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // Nase
-    ctx.fillStyle = '#AD1457';
-    ctx.beginPath();
-    ctx.ellipse(2, -PH + 16, 3.5, 2.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // Mund
-    ctx.strokeStyle = '#AD1457';
-    ctx.lineWidth   = 1.8;
-    ctx.beginPath();
-    ctx.arc(2, -PH + 22, 5, 0.2, Math.PI - 0.2);
-    ctx.stroke();
+    // 8. Kopf mit fluffigem Fell
+    skyKopfZeichnen(blinzel);
 
     ctx.restore();
 }
 
-function fluegelZeichnen() {
+function skySchwanzZeichnen(phase) {
+    const w = Math.sin(phase * 1.6) * 7;
+    const teile = [
+        { x: -13, y: -30, r: 7,  farbe: SKY.fell     },
+        { x: -20 + w * 0.3, y: -40 + w * 0.2, r: 8, farbe: SKY.fellHell },
+        { x: -26 + w * 0.6, y: -50 + w * 0.4, r: 9, farbe: SKY.fell     },
+        { x: -28 + w * 0.9, y: -60 + w * 0.6, r: 7, farbe: SKY.fellHell },
+    ];
+    for (const t of teile) {
+        ctx.fillStyle = t.farbe;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function skyKoerperZeichnen() {
+    // Fell-Körper (mit fluffigen Bumps)
+    ctx.fillStyle = SKY.fell;
+    ctx.beginPath();
+    ctx.ellipse(0, -36, 17, 21, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fluffige Rand-Bumps oben am Torso
+    for (let i = 0; i < 7; i++) {
+        const a = Math.PI + (Math.PI * i / 6);
+        ctx.fillStyle = i % 2 === 0 ? '#FF85C2' : SKY.fellHell;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * 16, -36 + Math.sin(a) * 20, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Uniform (dunkleres Pink darüber)
+    ctx.fillStyle = SKY.fellDunkel;
+    ctx.beginPath();
+    ctx.ellipse(0, -36, 12, 17, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Helles Bauchfeld
+    ctx.fillStyle = SKY.bauch;
+    ctx.beginPath();
+    ctx.ellipse(0, -30, 6, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Flügel-Abzeichen auf der Uniform
+    ctx.fillStyle = SKY.abzeichen;
     ctx.save();
-    // Linker Flügel
-    ctx.fillStyle   = 'rgba(255,182,193,0.88)';
-    ctx.strokeStyle = '#FF69B4';
+    ctx.translate(0, -44);
+    // Linker Miniflügel
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(-9, -6, -11, 3);
+    ctx.quadraticCurveTo(-5, 0, 0, 0);
+    ctx.fill();
+    // Rechter Miniflügel
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(9, -6, 11, 3);
+    ctx.quadraticCurveTo(5, 0, 0, 0);
+    ctx.fill();
+    // Mitte
+    ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+}
+
+function skyOhrenZeichnen(phase) {
+    const wackeln = Math.sin(phase * 0.7) * 2.5;
+
+    // Linkes Ohr
+    ctx.save();
+    ctx.translate(-18, -62);
+    ctx.rotate(-0.28 + wackeln * 0.015);
+    ctx.fillStyle = SKY.fell;
+    ctx.beginPath(); ctx.ellipse(0, 10, 9, 22, -0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = SKY.fellHell;
+    ctx.beginPath(); ctx.ellipse(0, 11, 5, 15, -0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // Rechtes Ohr
+    ctx.save();
+    ctx.translate(20, -62);
+    ctx.rotate(0.28 - wackeln * 0.015);
+    ctx.fillStyle = SKY.fell;
+    ctx.beginPath(); ctx.ellipse(0, 10, 9, 22, 0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = SKY.fellHell;
+    ctx.beginPath(); ctx.ellipse(0, 11, 5, 15, 0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+}
+
+function skyKopfZeichnen(blinzel) {
+    // Fell-Kopf
+    ctx.fillStyle = SKY.fell;
+    ctx.beginPath();
+    ctx.arc(0, -64, 23, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fluffige Fell-Bumps rund um den Kopf (oben und seitlich)
+    for (let i = 0; i < 9; i++) {
+        const a = (Math.PI * 2 * i / 9) + 0.3;
+        // Nur Bumps die ÜBER der Schnauze sind (obere 270°)
+        if (Math.sin(a) > 0.5) continue;
+        ctx.fillStyle = i % 2 === 0 ? '#FF85C2' : SKY.fellHell;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * 22, -64 + Math.sin(a) * 22, 6, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Gesichtsfeld (heller)
+    ctx.fillStyle = '#FFD8EC';
+    ctx.beginPath();
+    ctx.ellipse(0, -60, 17, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── HELM ──────────────────────────────────────────────────────────────
+    // Weiße Helmkuppel (obere Hälfte des Kopfes)
+    ctx.fillStyle = SKY.helm;
+    ctx.beginPath();
+    ctx.arc(0, -66, 24, Math.PI + 0.35, 2 * Math.PI - 0.35);
+    ctx.closePath();
+    ctx.fill();
+
+    // Helm-Rand (pinkes Band)
+    ctx.strokeStyle = SKY.helmBand;
+    ctx.lineWidth   = 4;
+    ctx.beginPath();
+    ctx.arc(0, -66, 24, Math.PI + 0.35, 2 * Math.PI - 0.35);
+    ctx.stroke();
+
+    // Hellrosa Streifen-Akzent auf der Helmkuppel
+    ctx.fillStyle = '#FFD6E8';
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, -66, 24, Math.PI + 0.35, 2 * Math.PI - 0.35);
+    ctx.closePath();
+    ctx.clip();
+    ctx.fillRect(-4, -92, 8, 20);
+    ctx.restore();
+
+    // Stern oben auf dem Helm
+    ctx.fillStyle = SKY.helmBand;
+    sternZeichnen(0, -89, 5.5);
+
+    // ── VISIER / SCHUTZBRILLE ─────────────────────────────────────────────
+    // Blau-transparentes Rechteck (Skys blaue Pilotenbrille)
+    ctx.fillStyle = SKY.visier;
+    rundesRechteck(-17, -76, 34, 12, 5);
+    ctx.fill();
+
+    // Rahmen der Brille
+    ctx.strokeStyle = SKY.visierRand;
+    ctx.lineWidth   = 2.2;
+    ctx.stroke();
+
+    // Nasensteg in der Mitte
+    ctx.fillStyle = SKY.visierRand;
+    ctx.fillRect(-2, -76, 4, 12);
+
+    // Brillenbügel (links und rechts)
+    ctx.strokeStyle = SKY.visierRand;
+    ctx.lineWidth   = 2.5;
+    ctx.beginPath(); ctx.moveTo(-24, -70); ctx.lineTo(-17, -70); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo( 24, -70); ctx.lineTo( 17, -70); ctx.stroke();
+
+    // ── AUGEN (groß, ausdrucksstark, typisch PAW Patrol) ─────────────────
+    if (blinzel) {
+        ctx.strokeStyle = SKY.augeInnen;
+        ctx.lineWidth   = 3;
+        ctx.lineCap     = 'round';
+        ctx.beginPath(); ctx.moveTo(-15, -60); ctx.lineTo(-6, -60);  ctx.stroke();
+        ctx.beginPath(); ctx.moveTo( 6,  -60); ctx.lineTo(15, -60);  ctx.stroke();
+    } else {
+        // Linkes Auge
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.ellipse(-10, -60, 7.5, 9, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = SKY.auge;
+        ctx.beginPath(); ctx.ellipse(-10, -60, 5.5, 7, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = SKY.augeInnen;
+        ctx.beginPath(); ctx.arc(-10, -60, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.arc(-8, -63,  1.8, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(-13, -58, 1.0, 0, Math.PI * 2); ctx.fill();
+
+        // Rechtes Auge
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.ellipse(10, -60, 7.5, 9, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = SKY.auge;
+        ctx.beginPath(); ctx.ellipse(10, -60, 5.5, 7, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = SKY.augeInnen;
+        ctx.beginPath(); ctx.arc(10, -60, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.arc(12, -63,  1.8, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc( 7, -58,  1.0, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // ── SCHNAUZE ──────────────────────────────────────────────────────────
+    // Hellrosa Schnauzenfeld
+    ctx.fillStyle = '#FFD0E4';
+    ctx.beginPath();
+    ctx.ellipse(0, -47, 10, 7.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Nase (dunkel, oval)
+    ctx.fillStyle = SKY.nase;
+    ctx.beginPath();
+    ctx.ellipse(0, -53, 4, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Glanzlicht auf Nase
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(-1.5, -54.5, 1.5, 1, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Nasen-Mittelstrich
+    ctx.strokeStyle = SKY.nase;
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath(); ctx.moveTo(0, -50); ctx.lineTo(0, -47); ctx.stroke();
+
+    // Mund
+    ctx.strokeStyle = SKY.mund;
+    ctx.lineWidth   = 2;
+    ctx.lineCap     = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-6, -46);
+    ctx.quadraticCurveTo(0, -40, 6, -46);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -46); ctx.lineTo(0, -40);
+    ctx.stroke();
+}
+
+function skyFluegelZeichnen() {
+    ctx.save();
+    // Linker Flügel (hinten)
+    ctx.fillStyle   = 'rgba(255,182,193,0.82)';
+    ctx.strokeStyle = SKY.fell;
     ctx.lineWidth   = 1.5;
     ctx.beginPath();
-    ctx.moveTo(-14, -PH + 38);
-    ctx.quadraticCurveTo(-60, -PH + 14, -44, -PH + 56);
-    ctx.quadraticCurveTo(-28, -PH + 52, -14, -PH + 38);
+    ctx.moveTo(-14, -38);
+    ctx.quadraticCurveTo(-62, -12, -46, -56);
+    ctx.quadraticCurveTo(-32, -50, -14, -38);
     ctx.fill(); ctx.stroke();
     // Rechter Flügel
     ctx.beginPath();
-    ctx.moveTo(14, -PH + 38);
-    ctx.quadraticCurveTo(60, -PH + 14, 44, -PH + 56);
-    ctx.quadraticCurveTo(28, -PH + 52, 14, -PH + 38);
+    ctx.moveTo(14, -38);
+    ctx.quadraticCurveTo(62, -12, 46, -56);
+    ctx.quadraticCurveTo(32, -50, 14, -38);
     ctx.fill(); ctx.stroke();
+    // Federkiel-Linien
+    ctx.strokeStyle = 'rgba(255,105,180,0.5)';
+    ctx.lineWidth   = 1;
+    for (let i = 0; i < 3; i++) {
+        const t = (i + 1) / 4;
+        ctx.beginPath();
+        ctx.moveTo(-14 - t * 30, -38 - t * 14);
+        ctx.lineTo(-14 - t * 32, -38 - t * 18);
+        ctx.stroke();
+    }
     ctx.restore();
 }
 
-function sternZeichnen(mx, my, r) {
-    ctx.beginPath();
-    for (let i = 0; i < 5; i++) {
-        const aussen = {
-            x: mx + r       * Math.cos((i * 4 * Math.PI / 5) - Math.PI / 2),
-            y: my + r       * Math.sin((i * 4 * Math.PI / 5) - Math.PI / 2)
-        };
-        const innen = {
-            x: mx + r * 0.4 * Math.cos(((i * 4 + 2) * Math.PI / 5) - Math.PI / 2),
-            y: my + r * 0.4 * Math.sin(((i * 4 + 2) * Math.PI / 5) - Math.PI / 2)
-        };
-        i === 0 ? ctx.moveTo(aussen.x, aussen.y) : ctx.lineTo(aussen.x, aussen.y);
-        ctx.lineTo(innen.x, innen.y);
-    }
-    ctx.closePath();
-    ctx.fill();
-}
-
+// ── Buchstaben ─────────────────────────────────────────────────────────────
 function buchstabenZeichnen() {
     for (const b of buchstaben) {
         if (b.weg) continue;
@@ -568,7 +721,7 @@ function buchstabenZeichnen() {
         ctx.translate(b.x, b.y);
         if (b.leuchtet) {
             ctx.shadowColor = '#FFD700';
-            ctx.shadowBlur  = 25 + Math.sin(b.glowT) * 15;
+            ctx.shadowBlur  = 28 + Math.sin(b.glowT) * 16;
         }
         ctx.fillStyle = b.farbe;
         ctx.beginPath();
@@ -576,7 +729,7 @@ function buchstabenZeichnen() {
         ctx.fill();
         if (b.leuchtet) {
             ctx.strokeStyle = `rgba(255,220,0,${0.7 + Math.sin(b.glowT) * 0.3})`;
-            ctx.lineWidth   = 4;
+            ctx.lineWidth   = 4.5;
         } else {
             ctx.strokeStyle = 'rgba(255,255,255,0.35)';
             ctx.lineWidth   = 2;
@@ -592,18 +745,17 @@ function buchstabenZeichnen() {
     }
 }
 
+// ── HUD ────────────────────────────────────────────────────────────────────
 function anzeigeZeichnen() {
-    // Zielbox oben Mitte
+    // Zielbox
     ctx.fillStyle = 'rgba(0,0,0,0.42)';
     rundesRechteck(W / 2 - 155, 8, 310, 72, 16);
     ctx.fill();
-
     ctx.fillStyle    = '#FFD700';
     ctx.font         = 'bold 17px Arial';
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.fillText('Finde den Buchstaben:', W / 2, 31);
-
     ctx.fillStyle = 'white';
     ctx.font      = 'bold 38px Arial';
     ctx.fillText(ziel, W / 2, 68);
@@ -616,13 +768,17 @@ function anzeigeZeichnen() {
         ctx.fillText('♥', 14 + i * 40, 46);
     }
 
-    // Punkte
+    // Punkte + Geschwindigkeitsanzeige
+    const level = Math.floor(punkte / 3) + 1;
     ctx.fillStyle   = '#E91E8C';
-    ctx.font        = 'bold 22px Arial';
+    ctx.font        = 'bold 20px Arial';
     ctx.textAlign   = 'right';
-    ctx.fillText(`⭐ ${punkte}`, W - 14, 42);
+    ctx.fillText(`⭐ ${punkte}`, W - 14, 38);
+    ctx.fillStyle   = 'rgba(255,255,255,0.7)';
+    ctx.font        = '13px Arial';
+    ctx.fillText(`Stufe ${level}`, W - 14, 57);
 
-    // Leuchthinweis (ausblendend)
+    // Leuchthinweis
     if (punkte < GLOW_UNTIL) {
         ctx.fillStyle    = 'rgba(255,200,0,0.72)';
         ctx.font         = '14px Arial';
@@ -632,18 +788,7 @@ function anzeigeZeichnen() {
     }
 }
 
-function partikelZeichnen() {
-    for (const p of partikel) {
-        ctx.save();
-        ctx.globalAlpha = p.leben;
-        ctx.fillStyle   = p.farbe;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-    }
-}
-
+// ── Flash-Overlay ──────────────────────────────────────────────────────────
 function flashZeichnen() {
     if (flashTimer <= 0) return;
     const alpha = Math.min(1, flashTimer / 30) * 0.35;
@@ -656,7 +801,7 @@ function flashZeichnen() {
             ctx.font         = 'bold 72px Arial';
             ctx.fillStyle    = 'white';
             ctx.fillText(`⭐ SUPER! ⭐`, W / 2, H / 2 - 18);
-            ctx.font         = 'bold 50px Arial';
+            ctx.font         = 'bold 54px Arial';
             ctx.fillStyle    = '#FFD700';
             ctx.fillText(letzterTreffer, W / 2, H / 2 + 46);
         }
@@ -673,35 +818,43 @@ function flashZeichnen() {
     }
 }
 
+// ── Partikel ───────────────────────────────────────────────────────────────
+function partikelZeichnen() {
+    for (const p of partikel) {
+        ctx.save();
+        ctx.globalAlpha = p.leben;
+        ctx.fillStyle   = p.farbe;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+// ── Bildschirme ────────────────────────────────────────────────────────────
 function startbildschirmZeichnen() {
     hintergrundZeichnen();
     ctx.fillStyle = 'rgba(0,0,0,0.52)';
     ctx.fillRect(0, 0, W, H);
-
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'alphabetic';
-
-    ctx.fillStyle = '#FFD700';
-    ctx.font      = 'bold 52px Arial';
+    ctx.fillStyle    = '#FFD700';
+    ctx.font         = 'bold 52px Arial';
     ctx.fillText('🐾 Buchstaben Fang! 🐾', W / 2, 145);
-
-    ctx.fillStyle = 'white';
-    ctx.font      = '24px Arial';
+    ctx.fillStyle    = 'white';
+    ctx.font         = '24px Arial';
     ctx.fillText('Fange den richtigen Buchstaben!', W / 2, 210);
     ctx.fillText('Weiche den falschen aus!', W / 2, 247);
-
-    ctx.fillStyle = '#FFB6C1';
-    ctx.font      = '20px Arial';
+    ctx.fillStyle    = '#FFB6C1';
+    ctx.font         = '20px Arial';
     ctx.fillText('← → Bewegen     ↑ / Leertaste  Springen', W / 2, 308);
-
-    ctx.fillStyle = '#E91E8C';
+    ctx.fillStyle    = '#E91E8C';
     rundesRechteck(W / 2 - 130, 358, 260, 62, 31);
     ctx.fill();
     ctx.fillStyle    = 'white';
     ctx.font         = 'bold 30px Arial';
     ctx.textBaseline = 'middle';
     ctx.fillText('START!', W / 2, 389);
-
     ctx.fillStyle    = 'rgba(255,255,255,0.45)';
     ctx.font         = '16px Arial';
     ctx.textBaseline = 'alphabetic';
@@ -712,33 +865,27 @@ function spielendeZeichnen() {
     hintergrundZeichnen();
     ctx.fillStyle = 'rgba(0,0,0,0.65)';
     ctx.fillRect(0, 0, W, H);
-
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'alphabetic';
-
-    ctx.fillStyle = '#FF6B6B';
-    ctx.font      = 'bold 60px Arial';
+    ctx.fillStyle    = '#FF6B6B';
+    ctx.font         = 'bold 60px Arial';
     ctx.fillText('Schade! 😢', W / 2, 168);
-
-    ctx.fillStyle = 'white';
-    ctx.font      = '28px Arial';
+    ctx.fillStyle    = 'white';
+    ctx.font         = '28px Arial';
     ctx.fillText(`Du hast ${punkte} Buchstaben gefunden!`, W / 2, 242);
-
     const sterne = Math.min(3, Math.max(1, Math.floor(punkte / 4) + 1));
     ctx.font = '52px Arial';
     for (let i = 0; i < 3; i++) {
         ctx.fillStyle = i < sterne ? '#FFD700' : '#555';
         ctx.fillText('★', W / 2 - 70 + i * 70, 320);
     }
-
-    ctx.fillStyle = '#E91E8C';
+    ctx.fillStyle    = '#E91E8C';
     rundesRechteck(W / 2 - 140, 352, 280, 62, 31);
     ctx.fill();
     ctx.fillStyle    = 'white';
     ctx.font         = 'bold 26px Arial';
     ctx.textBaseline = 'middle';
     ctx.fillText('Nochmal spielen! 🎮', W / 2, 383);
-
     ctx.fillStyle    = 'rgba(255,255,255,0.45)';
     ctx.font         = '16px Arial';
     ctx.textBaseline = 'alphabetic';
@@ -749,22 +896,17 @@ function gewonnenZeichnen() {
     hintergrundZeichnen();
     ctx.fillStyle = 'rgba(0,0,0,0.58)';
     ctx.fillRect(0, 0, W, H);
-
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'alphabetic';
-
-    ctx.fillStyle = '#FFD700';
-    ctx.font      = 'bold 50px Arial';
+    ctx.fillStyle    = '#FFD700';
+    ctx.font         = 'bold 50px Arial';
     ctx.fillText('🏆 Alle Buchstaben gefunden! 🏆', W / 2, 158);
-
-    ctx.fillStyle = 'white';
-    ctx.font      = '27px Arial';
+    ctx.fillStyle    = 'white';
+    ctx.font         = '27px Arial';
     ctx.fillText('Wahnsinn! Du bist ein Buchstaben-Profi!', W / 2, 226);
-
     ctx.font = '56px Arial';
     ctx.fillText('⭐⭐⭐', W / 2, 310);
-
-    ctx.fillStyle = '#E91E8C';
+    ctx.fillStyle    = '#E91E8C';
     rundesRechteck(W / 2 - 130, 348, 260, 62, 31);
     ctx.fill();
     ctx.fillStyle    = 'white';
@@ -787,19 +929,16 @@ let touchX0 = null;
 canvas.addEventListener('touchstart', e => {
     touchX0 = e.touches[0].clientX;
     if (zustand === 'start' || zustand === 'spielende' || zustand === 'gewonnen') { spielStart(); return; }
-    if (zustand === 'spielen' && spieler.aufBoden) {
-        spieler.vy = JUMP_V;
-        spieler.aufBoden = false;
-    }
+    if (zustand === 'spielen' && spieler.aufBoden) { spieler.vy = JUMP_V; spieler.aufBoden = false; }
 }, { passive: true });
 
 canvas.addEventListener('touchmove', e => {
     if (zustand !== 'spielen' || touchX0 === null) return;
     const dx = e.touches[0].clientX - touchX0;
     if (Math.abs(dx) > 8) {
-        spieler.x       += dx * 0.12;
-        spieler.richtung = dx > 0 ? 1 : -1;
-        touchX0          = e.touches[0].clientX;
+        spieler.x        += dx * 0.12;
+        spieler.richtung  = dx > 0 ? 1 : -1;
+        touchX0           = e.touches[0].clientX;
     }
 }, { passive: true });
 
@@ -808,17 +947,16 @@ canvas.addEventListener('click', () => {
 });
 
 // ── Hauptschleife ──────────────────────────────────────────────────────────
-zustand   = 'start';
-tasten    = {};
+zustand    = 'start';
+tasten     = {};
 buchstaben = [];
-partikel  = [];
+partikel   = [];
 
 function zeichnen() {
     ctx.clearRect(0, 0, W, H);
     if (zustand === 'start')     { startbildschirmZeichnen(); return; }
     if (zustand === 'spielende') { spielendeZeichnen();       return; }
     if (zustand === 'gewonnen')  { gewonnenZeichnen();        return; }
-
     hintergrundZeichnen();
     buchstabenZeichnen();
     spielerZeichnen();
