@@ -289,6 +289,11 @@ function buchstabenSpawnen() {
     spawnTimer        = intervall + Math.floor(Math.random() * 22);
     const basisGeschw = 1.0 + punkte * 0.065;
 
+    // Maximale Buchstaben gleichzeitig: 3 → 4 (ab 8) → 5 (ab 16)
+    const maxBuchstaben = punkte < 8 ? 3 : punkte < 16 ? 4 : 5;
+    const aktivAnzahl   = buchstaben.filter(b => !b.weg).length;
+    if (aktivAnzahl >= maxBuchstaben) return;
+
     // Maximal EIN Zielbuchstabe gleichzeitig auf dem Bildschirm
     const zielSichtbar = buchstaben.some(b => !b.weg && b.istZiel);
 
