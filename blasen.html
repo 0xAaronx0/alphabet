@@ -86,10 +86,29 @@ function sprechEinheit(text, tempo, tonhöhe) {
     return u;
 }
 
-function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
-    synth.cancel();
+// Natürliche Stimme: vorab erzeugte MP3-Clips (Katja), Web Speech nur als Fallback.
+// EIN wiederverwendetes Audio-Element — iOS entsperrt es bei der ersten Geste.
+const sprachClip = new Audio();
+sprachClip.preload = 'auto';
+
+function audioSchluessel(text) {
+    return text.toLowerCase()
+        .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+        .replace(/[^a-z0-9 ]/g, '').trim().replace(/ +/g, '_');
+}
+
+function sprechenFallback(text, tempo, tonhöhe) {
     aktuelleAussage = sprechEinheit(text, tempo, tonhöhe);
     synth.speak(aktuelleAussage);
+}
+
+function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
+    synth.cancel();
+    let fallbackAktiv = false; // verhindert doppelten Fallback (onerror + play-reject)
+    const fallback = () => { if (!fallbackAktiv) { fallbackAktiv = true; sprechenFallback(text, tempo, tonhöhe); } };
+    sprachClip.onerror = fallback;
+    sprachClip.src = 'audio/' + audioSchluessel(text) + '.mp3';
+    sprachClip.play().catch(fallback);
 }
 
 function buchstabeAnsagen(z) {

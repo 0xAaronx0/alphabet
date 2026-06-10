@@ -89,10 +89,15 @@ Setup (gleiches Muster wie `cruise-map`/`nabla-dashboard` auf dem KiteScout-VPS)
 - SSH vom Mac: `ssh -i ~/.ssh/hostinger_vps root@187.77.70.112` (IPv6-Alias `hostinger` geht nur in Netzen mit IPv6)
 - Spiel-Update deployen: neue Datei per `scp` nach `/docker/alphabet/html/` — kein Container-Neustart nötig
 
-### Bekannte Bugs (unbestätigt behoben)
-- Sprachausgabe (`speechSynthesis`) wurde in mehreren Sessions als "still silent" gemeldet
-  - Der Safari-Fix (sync vor AudioContext) wurde gepusht, aber die finale Bestätigung vom User steht aus
-  - Falls es wieder nicht spricht: `sprechen()` aufrufen → im Browser-Konsole auf Fehler prüfen → sicherstellen, dass `aktuelleAussage` nicht `null` nach `speak()`
+### ✅ Sprachausgabe (Stand 2026-06-10)
+- User bestätigt: Sprachausgabe **funktioniert** — aber die Systemstimme klang unangenehm
+- Deshalb umgestellt auf **vorab erzeugte MP3-Clips** (Microsoft `de-DE-KatjaNeural` via edge-tts, Rate −12%):
+  - `audio/` — 145 Clips (finde_X, hoppla_such_X, nein_such_X für a–z + 0–20, plus 4 Festsätze)
+  - `gen_audio.py` erzeugt sie neu: `uv run --with edge-tts python gen_audio.py`
+  - `sprechen()` spielt jetzt den passenden Clip über EIN wiederverwendetes `Audio`-Element
+    (iOS entsperrt es bei der ersten Geste); Dateiname = `audioSchluessel(text)` (Slug des gesprochenen Texts)
+  - **Web Speech bleibt als Fallback** — der alte Safari-Fix (sync vor AudioContext, kein setTimeout) gilt dort weiterhin
+- Neue Ansage hinzufügen: Satz in `gen_audio.py` UND im Spiel-Code ergänzen — Slug-Regeln müssen übereinstimmen, sonst greift nur der Fallback
 
 ---
 
