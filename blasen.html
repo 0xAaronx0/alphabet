@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buchstaben Blasen!</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #87CEEB;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            border-radius: 16px;
+            box-shadow: 0 0 60px rgba(0, 100, 200, 0.3);
+            touch-action: none;
+        }
+    </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const W = 800, H = 600;
+canvas.width  = W;
+canvas.height = H;
+
+function resize() {
+    const s = Math.min(window.innerWidth / W, window.innerHeight / H) * 0.97;
+    canvas.style.width  = (W * s) + 'px';
+    canvas.style.height = (H * s) + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── Konstanten ─────────────────────────────────────────────────────────────
+const GROUND     = H - 60;
+const BLASE_R    = 48;
+const ZIEL_PRO_LEVEL = 15;
+const GLOW_UNTIL = 6;
+
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const ZAHLEN   = Array.from({length: 21}, (_, i) => String(i)); // 0–20
+const FARBEN   = [
+    '#FF6B6B','#4ECDC4','#45B7D1','#FFA94D','#A9E34B',
+    '#DDA0DD','#FFD43B','#74C0FC','#F783AC','#63E6BE',
+    '#FF8787','#66D9E8','#A9C4EB','#FFEC99','#B2F2BB',
+    '#FAB005','#E599F7','#74C0FC','#FFA8A8','#8CE99A',
+    '#FF922B','#748FFC','#3BC9DB','#F06595','#69DB7C',
+    '#DA77F2'
+];
+const ZAHLEN_FARBEN = FARBEN.slice(0, 21);
+
+// ── Sprache: ausschließlich Deutsch ───────────────────────────────────────
+const synth = window.speechSynthesis;
+let deutscheStimme  = null;
+let aktuelleAussage = null; // verhindert Garbage-Collection der Utterance
+
+function stimmenLaden() {
+    const stimmen = synth.getVoices();
+    deutscheStimme =
+        stimmen.find(v => v.name === 'Anna') ||
+        stimmen.find(v => /Steffi|Markus|Yannick/i.test(v.name) && v.lang.startsWith('de')) ||
+        stimmen.find(v => v.name.startsWith('Google') && v.lang === 'de-DE') ||
+        stimmen.find(v => !v.localService && v.lang === 'de-DE') ||
+        stimmen.find(v => v.localService && v.lang === 'de-DE') ||
+        stimmen.find(v => v.lang.startsWith('de')) ||
+        null;
+}
+stimmenLaden();
+if (typeof synth.onvoiceschanged !== 'undefined') synth.onvoiceschanged = stimmenLaden;
+
+function sprechEinheit(text, tempo, tonhöhe) {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang  = 'de-DE';
+    u.rate  = tempo;
+    u.pitch = tonhöhe;
+    u.volume = 1;
+    if (deutscheStimme) u.voice = deutscheStimme;
+    return u;
+}
+
+function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
+    synth.cancel();
+    aktuelleAussage = sprechEinheit(text, tempo, tonhöhe);
+    synth.speak(aktuelleAussage);
+}
+
+function buchstabeAnsagen(z) {
+    sprechen('Finde ' + z.toLowerCase(), 0.78, 1.25);
+}
+
+function superSprechen() {
+    sprechen('Super!', 0.9, 1.5);
+}
+
+// ── Hintergrundmusik (Web Audio API) ──────────────────────────────────────
+const MELODIE_NOTEN = [
+    [523.25,1],[659.25,1],[783.99,2],
+    [880.00,1],[783.99,1],[659.25,2],
+    [659.25,1],[523.25,1],[587.33,2],
+    [659.25,1],[783.99,1],[523.25,2],
+    [440.00,1],[523.25,1],[659.25,2],
+    [783.99,1],[659.25,1],[523.25,2],
+    [587.33,1],[659.25,1],[783.99,2],
+    [880.00,1],[659.25,1],[523.25,2],
+];
+const BASS_NOTEN = [
+    [130.81,4],[196.00,4],[220.00,4],[174.61,4],
+    [130.81,4],[196.00,4],[261.63,4],[196.00,4],
+];
+const AKKORD_NOTEN = [
+    [[261.63,329.63,392.00],4],
+    [[196.00,246.94,293.66],4],
+    [[220.00,261.63,329.63],4],
+    [[174.61,220.00,261.63],4],
+    [[261.63,329.63,392.00],4],
+    [[196.00,246.94,293.66],4],
+    [[261.63,329.63,392.00],4],
+    [[196.00,246.94,293.66],4],
+];
+const BPM   = 108;
+const SCHLAG = 60 / BPM;
+
+let audioCtx     = null;
+let masterGain   = null;
+let melIdx = 0, bassIdx = 0, akkIdx = 0;
+let melZeit = 0, bassZeit = 0, akkZeit = 0;
+
+function musikStarten() {
+    if (audioCtx) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        return;
+    }
+    audioCtx   = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+
+    const komp = audioCtx.createDynamicsCompressor();
+    komp.threshold.value = -18;
+    komp.ratio.value     = 4;
+    komp.attack.value    = 0.05;
+    komp.release.value   = 0.3;
+
+    masterGain.connect(komp);
+    komp.connect(audioCtx.destination);
+    masterGain.gain.setValueAtTime(0.14, audioCtx.currentTime);
+
+    const jetzt = audioCtx.currentTime + 0.15;
+    melZeit = bassZeit = akkZeit = jetzt;
+    musikSchedulieren();
+}
+
+function bellen() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    [[0, 0.14], [0.22, 0.11]].forEach(([delay, dur]) => {
+        const osc  = audioCtx.createOscillator();
+        const filt = audioCtx.createBiquadFilter();
+        const env  = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(310, t + delay);
+        osc.frequency.exponentialRampToValueAtTime(110, t + delay + dur);
+        filt.type = 'bandpass';
+        filt.frequency.setValueAtTime(1700, t + delay);
+        filt.frequency.exponentialRampToValueAtTime(480, t + delay + dur);
+        filt.Q.value = 2.8;
+        env.gain.setValueAtTime(0, t + delay);
+        env.gain.linearRampToValueAtTime(0.6, t + delay + 0.010);
+        env.gain.exponentialRampToValueAtTime(0.001, t + delay + dur);
+        osc.connect(filt); filt.connect(env); env.connect(audioCtx.destination);
+        osc.start(t + delay); osc.stop(t + delay + dur + 0.02);
+
+        const osc2 = audioCtx.createOscillator();
+        const env2 = audioCtx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(190, t + delay);
+        osc2.frequency.exponentialRampToValueAtTime(75, t + delay + dur * 0.75);
+        env2.gain.setValueAtTime(0, t + delay);
+        env2.gain.linearRampToValueAtTime(0.45, t + delay + 0.008);
+        env2.gain.exponentialRampToValueAtTime(0.001, t + delay + dur * 0.85);
+        osc2.connect(env2); env2.connect(audioCtx.destination);
+        osc2.start(t + delay); osc2.stop(t + delay + dur + 0.02);
+    });
+}
+
+// Heller "Plopp" beim Zerplatzen einer Blase
+function ploppen() {
+    if (!audioCtx) return;
+    const t   = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const env = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(420, t);
+    osc.frequency.exponentialRampToValueAtTime(880, t + 0.07);
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(0.4, t + 0.008);
+    env.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    osc.connect(env); env.connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + 0.14);
+}
+
+function musikNote(hz, start, dauer, lautst, typ, tiefpass = 0) {
+    const osc  = audioCtx.createOscillator();
+    const env  = audioCtx.createGain();
+    const att  = Math.min(0.04, dauer * 0.08);
+    const rel  = Math.min(0.12, dauer * 0.25);
+
+    osc.type = typ;
+    osc.frequency.setValueAtTime(hz, start);
+    env.gain.setValueAtTime(0, start);
+    env.gain.linearRampToValueAtTime(lautst, start + att);
+    env.gain.setValueAtTime(lautst * 0.75, start + dauer - rel);
+    env.gain.linearRampToValueAtTime(0, start + dauer);
+
+    if (tiefpass) {
+        const f = audioCtx.createBiquadFilter();
+        f.type = 'lowpass';
+        f.frequency.setValueAtTime(tiefpass, start);
+        f.Q.value = 0.8;
+        osc.connect(f); f.connect(env);
+    } else {
+        osc.connect(env);
+    }
+    env.connect(masterGain);
+    osc.start(start);
+    osc.stop(start + dauer + 0.02);
+}
+
+function musikSchedulieren() {
+    if (!audioCtx) return;
+    const bis = audioCtx.currentTime + 0.55;
+
+    while (melZeit < bis) {
+        const [hz, s] = MELODIE_NOTEN[melIdx];
+        musikNote(hz, melZeit, s * SCHLAG * 0.82, 0.16, 'triangle');
+        melZeit += s * SCHLAG;
+        melIdx   = (melIdx + 1) % MELODIE_NOTEN.length;
+    }
+    while (bassZeit < bis) {
+        const [hz, s] = BASS_NOTEN[bassIdx];
+        musikNote(hz, bassZeit, s * SCHLAG * 0.65, 0.18, 'sine');
+        bassZeit += s * SCHLAG;
+        bassIdx   = (bassIdx + 1) % BASS_NOTEN.length;
+    }
+    while (akkZeit < bis) {
+        const [noten, s] = AKKORD_NOTEN[akkIdx];
+        const d = s * SCHLAG * 0.88;
+        for (const hz of noten) musikNote(hz, akkZeit, d, 0.055, 'sine', 700);
+        akkZeit += s * SCHLAG;
+        akkIdx   = (akkIdx + 1) % AKKORD_NOTEN.length;
+    }
+    setTimeout(musikSchedulieren, 200);
+}
+
+// ── Spielzustand ───────────────────────────────────────────────────────────
+let zustand, punkte, ziel, blasen, partikel, spieler, aktiverLevel;
+let flashTimer     = 0;
+let letzterTreffer = '';
+let spawnTimer     = 30;
+
+function mischen(a) {
+    const b = [...a];
+    for (let i = b.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [b[i], b[j]] = [b[j], b[i]];
+    }
+    return b;
+}
+
+let buchstabenSchlange = [];
+function schlangeNeuFuellen() { buchstabenSchlange = mischen([...ALPHABET]); }
+function naechsterBuchstabe() {
+    if (!buchstabenSchlange.length) schlangeNeuFuellen();
+    return buchstabenSchlange.pop();
+}
+
+let zahlenSchlange = [];
+function zahlenNeuFuellen() { zahlenSchlange = mischen([...ZAHLEN]); }
+function naechsteZahl() {
+    if (!zahlenSchlange.length) zahlenNeuFuellen();
+    return zahlenSchlange.pop();
+}
+function naechstesZiel() {
+    return aktiverLevel === 1 ? naechsterBuchstabe() : naechsteZahl();
+}
+
+function zielSetzen(t) {
+    ziel = t;
+    const leuchtet = punkte < GLOW_UNTIL;
+    for (const b of blasen) {
+        if (!b.weg) {
+            b.istZiel  = b.zeichen === ziel;
+            b.leuchtet = leuchtet && b.istZiel;
+        }
+    }
+}
+
+function spielerErstellen() {
+    return { x: W / 2, y: GROUND, vy: 0, aufBoden: true,
+             richtung: 1, beinPhase: 0, blinzelTimer: 0 };
+}
+
+function spielStart() {
+    aktiverLevel = 1;
+    punkte       = 0;
+    blasen       = [];
+    partikel     = [];
+    spieler      = spielerErstellen();
+    flashTimer   = 0;
+    spawnTimer   = 20;
+    schlangeNeuFuellen();
+    ziel = naechsterBuchstabe();
+    // Sprache VOR musikStarten() – Safari blockiert speak() nach AudioContext-Erstellung
+    buchstabeAnsagen(ziel);
+    zustand = 'spielen';
+    musikStarten();
+}
+
+function level2Starten() {
+    aktiverLevel = 2;
+    punkte       = 0;
+    blasen       = [];
+    partikel     = [];
+    spieler      = spielerErstellen();
+    flashTimer   = 0;
+    spawnTimer   = 20;
+    zahlenNeuFuellen();
+    ziel = naechsteZahl();
+    buchstabeAnsagen(ziel);
+    zustand = 'spielen';
+}
+
+// ── Blasen-Spawn: schweben langsam von unten nach oben ─────────────────────
+function blasenSpawnen() {
+    spawnTimer--;
+    if (spawnTimer > 0) return;
+    spawnTimer = 55 + Math.floor(Math.random() * 35);
+
+    const menge     = aktiverLevel === 1 ? ALPHABET : ZAHLEN;
+    const farbArray = aktiverLevel === 1 ? FARBEN : ZAHLEN_FARBEN;
+
+    const maxBlasen   = punkte < 5 ? 3 : punkte < 10 ? 4 : 5;
+    const aktivAnzahl = blasen.filter(b => !b.weg).length;
+    if (aktivAnzahl >= maxBlasen) return;
+
+    const zielSichtbar = blasen.some(b => !b.weg && b.istZiel);
+
+    let zeichen;
+    if (!zielSichtbar) {
+        zeichen = ziel;
+    } else {
+        const falsche = menge.filter(l => l !== ziel);
+        zeichen = falsche[Math.floor(Math.random() * falsche.length)];
+    }
+
+    const leuchtet = punkte < GLOW_UNTIL;
+    blasen.push({
+        zeichen,
+        x0       : BLASE_R + 20 + Math.random() * (W - BLASE_R * 2 - 40),
+        x        : 0,
+        y        : H + BLASE_R,
+        vy       : 0.45 + Math.random() * 0.25 + punkte * 0.012,
+        schwingT : Math.random() * Math.PI * 2,
+        schwingA : 14 + Math.random() * 18,
+        istZiel  : zeichen === ziel,
+        farbe    : farbArray[menge.indexOf(zeichen) % farbArray.length],
+        leuchtet : leuchtet && zeichen === ziel,
+        glowT    : 0,
+        wackelT  : 0,
+        weg      : false
+    });
+}
+
+function blasenBewegen() {
+    for (const b of blasen) {
+        if (b.weg) continue;
+        b.y        -= b.vy;
+        b.schwingT += 0.018;
+        b.glowT    += 0.06;
+        if (b.wackelT > 0) b.wackelT--;
+        b.x = b.x0 + Math.sin(b.schwingT) * b.schwingA;
+        if (b.y < -BLASE_R) b.weg = true;
+    }
+    blasen = blasen.filter(b => !b.weg);
+}
+
+// ── Partikel ───────────────────────────────────────────────────────────────
+function explosion(x, y, farbe, n = 18) {
+    for (let i = 0; i < n; i++) {
+        const a = (Math.PI * 2 * i / n) + Math.random() * 0.5;
+        const s = 3 + Math.random() * 5;
+        partikel.push({
+            x, y,
+            vx: Math.cos(a) * s, vy: Math.sin(a) * s - 2,
+            farbe, r: 5 + Math.random() * 7,
+            leben: 1, abbau: 0.018 + Math.random() * 0.015
+        });
+    }
+}
+
+function partikelUpdate() {
+    for (const p of partikel) {
+        p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.leben -= p.abbau;
+    }
+    partikel = partikel.filter(p => p.leben > 0);
+}
+
+// ── Update ─────────────────────────────────────────────────────────────────
+function update() {
+    if (zustand !== 'spielen') return;
+
+    if (flashTimer > 0) {
+        flashTimer--;
+        if (flashTimer === 0) buchstabeAnsagen(ziel);
+    }
+
+    blasenSpawnen();
+    blasenBewegen();
+    partikelUpdate();
+
+    // Marshall: freudiger Hüpfer nach Treffer, sonst stehen und wedeln
+    spieler.vy += 0.65;
+    spieler.y  += spieler.vy;
+    if (spieler.y >= GROUND) { spieler.y = GROUND; spieler.vy = 0; spieler.aufBoden = true; }
+    spieler.beinPhase   += 0.07;
+    spieler.blinzelTimer = (spieler.blinzelTimer + 1) % 180;
+}
+
+// ── Klick / Tipp ───────────────────────────────────────────────────────────
+function spielfeldKoordinaten(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+        x: (e.clientX - rect.left) * W / rect.width,
+        y: (e.clientY - rect.top)  * H / rect.height
+    };
+}
+
+function blaseAngeklickt(x, y) {
+    // Oberste (zuletzt gezeichnete) Blase zuerst prüfen, großzügiger Radius
+    for (let i = blasen.length - 1; i >= 0; i--) {
+        const b = blasen[i];
+        if (b.weg) continue;
+        const dx = x - b.x, dy = y - b.y;
+        if (dx * dx + dy * dy <= (BLASE_R + 12) * (BLASE_R + 12)) return b;
+    }
+    return null;
+}
+
+canvas.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    if (zustand === 'start' || zustand === 'gewonnen') { spielStart();   return; }
+    if (zustand === 'levelzwischen')                   { level2Starten(); return; }
+    if (zustand !== 'spielen') return;
+
+    const { x, y } = spielfeldKoordinaten(e);
+    const b = blaseAngeklickt(x, y);
+    if (!b) return;
+
+    if (b.istZiel) {
+        b.weg = true;
+        letzterTreffer = ziel;
+        punkte++;
+        explosion(b.x, b.y, b.farbe, 24);
+        ploppen();
+        bellen();
+        spieler.vy = -11;          // Freuden-Hüpfer
+        spieler.aufBoden = false;
+        spieler.richtung = b.x >= spieler.x ? 1 : -1;
+        if (punkte >= ZIEL_PRO_LEVEL) {
+            if (aktiverLevel === 1) {
+                zustand = 'levelzwischen';
+                sprechen('Super! Buchstaben geschafft! Jetzt kommen Zahlen!', 0.88, 1.5);
+            } else {
+                zustand = 'gewonnen';
+                sprechen('Wahnsinn! Du hast alle Zahlen gefunden!', 0.9, 1.6);
+            }
+            return;
+        }
+        superSprechen();
+        zielSetzen(naechstesZiel());
+        flashTimer = 75;
+    } else {
+        // Kein Leben verlieren – Blase wackelt nur freundlich
+        b.wackelT = 36;
+        sprechen(`Hoppla! Such ${ziel.toLowerCase()}!`, 0.82, 1.15);
+    }
+});
+
+// ── Zeichnen-Hilfsfunktionen ───────────────────────────────────────────────
+function rundesRechteck(x, y, b, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + b - r, y);
+    ctx.quadraticCurveTo(x + b, y, x + b, y + r);
+    ctx.lineTo(x + b, y + h - r);
+    ctx.quadraticCurveTo(x + b, y + h, x + b - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
+// ── Hintergrund ────────────────────────────────────────────────────────────
+function hintergrundZeichnen() {
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    if (aktiverLevel === 2) {
+        grad.addColorStop(0,    '#7B1FA2');
+        grad.addColorStop(0.35, '#E91E63');
+        grad.addColorStop(0.7,  '#FF9800');
+        grad.addColorStop(1,    '#FFCC80');
+    } else {
+        grad.addColorStop(0,    '#4FC3F7');
+        grad.addColorStop(0.55, '#81D4FA');
+        grad.addColorStop(1,    '#B3E5FC');
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    const wolkenAlpha = aktiverLevel === 2 ? 0.55 : 1;
+    wolkeZeichnen(90,  75, 1.0,  0.92 * wolkenAlpha);
+    wolkeZeichnen(320, 45, 0.75, 0.88 * wolkenAlpha);
+    wolkeZeichnen(580, 90, 0.9,  0.85 * wolkenAlpha);
+    wolkeZeichnen(730, 40, 0.6,  0.8  * wolkenAlpha);
+
+    const bg = ctx.createLinearGradient(0, GROUND, 0, H);
+    if (aktiverLevel === 2) {
+        bg.addColorStop(0, '#388E3C');
+        bg.addColorStop(1, '#1B5E20');
+    } else {
+        bg.addColorStop(0, '#66BB6A');
+        bg.addColorStop(1, '#2E7D32');
+    }
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, GROUND, W, H - GROUND);
+
+    ctx.strokeStyle = aktiverLevel === 2 ? '#558B2F' : '#81C784';
+    ctx.lineWidth   = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, GROUND);
+    ctx.lineTo(W, GROUND);
+    ctx.stroke();
+}
+
+function wolkeZeichnen(x, y, groesse, deckkraft) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(groesse, groesse);
+    ctx.fillStyle = `rgba(255,255,255,${deckkraft})`;
+    for (const [cx, cy, r] of [
+        [0,0,34],[30,-8,25],[-30,-5,23],[54,4,19],[-52,4,17],[18,-20,19],[-14,-18,17]
+    ]) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
+// ── Marshall von PAW Patrol (Dalmatiner, Feuerwehr) ───────────────────────
+const M = {
+    fell      : '#FFFFFF',
+    fleck     : '#1C1C1C',
+    uniform   : '#D32F2F',
+    helmRot   : '#C62828',
+    helmDunkel: '#7B0000',
+    auge      : '#6D4C41',
+    augeInnen : '#1A0800',
+    nase      : '#1A1A1A',
+    mund      : '#D47070',
+    gold      : '#FFD700',
+};
+
+function spielerZeichnen() {
+    const s       = spieler;
+    const blinzel = s.blinzelTimer > 170;
+
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    if (s.richtung === -1) ctx.scale(-1, 1);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath();
+    ctx.ellipse(0, 3, 22, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    marshallSchwanz(s.beinPhase);
+
+    // Hinterbein
+    ctx.save();
+    ctx.translate(-10, -12);
+    ctx.fillStyle = M.fell;
+    ctx.beginPath(); ctx.ellipse(0, -6, 6, 12, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = M.fleck;
+    ctx.beginPath(); ctx.ellipse(2, -2, 3, 2, 0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = M.fell;
+    ctx.beginPath(); ctx.ellipse(2, 8, 8, 5, 0.25, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    marshallKoerper();
+
+    // Vorderarm (roter Ärmel)
+    ctx.save();
+    ctx.translate(14, -42);
+    ctx.rotate(0.3);
+    ctx.fillStyle = M.uniform;
+    ctx.beginPath(); ctx.ellipse(0, -3, 6, 11, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = M.fell;
+    ctx.beginPath(); ctx.ellipse(-1, 9, 7, 5, -0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    marshallOhren(s.beinPhase);
+    marshallKopf(blinzel);
+
+    ctx.restore();
+}
+
+function marshallSchwanz(phase) {
+    const w = Math.sin(phase * 1.8) * 9;
+    ctx.fillStyle = M.fell;
+    ctx.beginPath();
+    ctx.moveTo(-14, -38);
+    ctx.quadraticCurveTo(-26 + w * 0.5, -54, -20 + w, -68);
+    ctx.quadraticCurveTo(-15 + w, -66, -12 + w * 0.4, -54);
+    ctx.quadraticCurveTo(-15 + w * 0.2, -42, -14, -38);
+    ctx.fill();
+    ctx.fillStyle = M.fleck;
+    ctx.beginPath(); ctx.ellipse(-18 + w * 0.4, -56, 4, 2.5, 0.4, 0, Math.PI * 2); ctx.fill();
+}
+
+function marshallKoerper() {
+    ctx.fillStyle = M.fell;
+    ctx.beginPath();
+    ctx.ellipse(0, -34, 18, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = M.uniform;
+    ctx.beginPath();
+    ctx.ellipse(0, -40, 14, 17, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = M.fell;
+    ctx.beginPath();
+    ctx.ellipse(0, -29, 6, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    knochenAbzeichen(0, -46, 6);
+
+    ctx.fillStyle = M.fleck;
+    ctx.beginPath(); ctx.ellipse(-11, -46, 5, 3.5, -0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( 10, -29, 4, 3,    0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( -6, -22, 3.5, 2.5, 0.2, 0, Math.PI * 2); ctx.fill();
+}
+
+function knochenAbzeichen(x, y, s) {
+    ctx.fillStyle = M.gold;
+    rundesRechteck(x - s, y - s * 0.22, s * 2, s * 0.44, s * 0.2);
+    ctx.fill();
+    for (const [dx, dy] of [[-s, -s*0.32], [-s, s*0.32], [s, -s*0.32], [s, s*0.32]]) {
+        ctx.beginPath(); ctx.arc(x + dx, y + dy, s * 0.38, 0, Math.PI * 2); ctx.fill();
+    }
+}
+
+function marshallOhren(phase) {
+    const sw = Math.sin(phase * 0.8) * 2;
+
+    ctx.save();
+    ctx.translate(-23, -70);
+    ctx.rotate(-0.12 + sw * 0.012);
+    ctx.fillStyle = M.fell;
+    ctx.beginPath();
+    ctx.moveTo(5, 0);
+    ctx.bezierCurveTo(-2, 6, -13, 18, -11, 34);
+    ctx.bezierCurveTo(-9, 44, 2, 47, 7, 43);
+    ctx.bezierCurveTo(12, 38, 12, 24, 9, 10);
+    ctx.bezierCurveTo(8, 4, 7, 1, 5, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = M.fleck;
+    ctx.beginPath(); ctx.ellipse(-1, 26, 4, 7, -0.15, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(23, -70);
+    ctx.rotate(0.12 - sw * 0.012);
+    ctx.fillStyle = M.fell;
+    ctx.beginPath();
+    ctx.moveTo(-5, 0);
+    ctx.bezierCurveTo(2, 6, 13, 18, 11, 34);
+    ctx.bezierCurveTo(9, 44, -2, 47, -7, 43);
+    ctx.bezierCurveTo(-12, 38, -12, 24, -9, 10);
+    ctx.bezierCurveTo(-8, 4, -7, 1, -5, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = M.fleck;
+    ctx.beginPath(); ctx.ellipse(1, 24, 4, 7, 0.15, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+}
+
+function marshallKopf(blinzel) {
+    ctx.fillStyle = M.fell;
+    ctx.beginPath();
+    ctx.arc(0, -66, 27, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = M.fleck;
+    ctx.beginPath(); ctx.ellipse( 13, -76, 7, 5,   0.5,  0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-15, -62, 5, 3.5,-0.3,  0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(  9, -54, 4, 3,   0.4,  0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = '#FFFAFA';
+    ctx.beginPath();
+    ctx.ellipse(0, -58, 20, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Feuerwehrhelm
+    ctx.fillStyle = M.helmRot;
+    ctx.beginPath();
+    ctx.arc(0, -66, 29, Math.PI + 0.1, 2 * Math.PI - 0.1);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, -66, 29, Math.PI + 0.1, 2 * Math.PI - 0.1);
+    ctx.closePath();
+    ctx.clip();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(-30, -74, 60, 8);
+    ctx.restore();
+
+    ctx.strokeStyle = M.helmDunkel;
+    ctx.lineWidth   = 3;
+    ctx.beginPath();
+    ctx.arc(0, -66, 29, Math.PI + 0.1, 2 * Math.PI - 0.1);
+    ctx.stroke();
+
+    ctx.fillStyle = M.helmDunkel;
+    ctx.beginPath();
+    ctx.ellipse(6, -54, 30, 6.5, -0.08, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = M.helmRot;
+    ctx.beginPath();
+    ctx.ellipse(5, -55.5, 28, 5, -0.08, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle    = M.gold;
+    ctx.font         = 'bold 13px Arial';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('03', 1, -81);
+
+    // Augen
+    if (blinzel) {
+        ctx.strokeStyle = M.augeInnen;
+        ctx.lineWidth   = 3;
+        ctx.lineCap     = 'round';
+        ctx.beginPath(); ctx.moveTo(-16, -60); ctx.lineTo(-7, -60); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(  7, -60); ctx.lineTo(16, -60); ctx.stroke();
+    } else {
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.ellipse(-11, -60, 8.5, 10, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = M.auge;
+        ctx.beginPath(); ctx.ellipse(-11, -60, 6,   7.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = M.augeInnen;
+        ctx.beginPath(); ctx.arc(-11, -60, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.ellipse(-8.5, -64, 2.8, 2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(-14, -61.5, 1.2, 0, Math.PI * 2); ctx.fill();
+
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.ellipse(11, -60, 8.5, 10, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = M.auge;
+        ctx.beginPath(); ctx.ellipse(11, -60, 6,   7.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = M.augeInnen;
+        ctx.beginPath(); ctx.arc(11, -60, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.beginPath(); ctx.ellipse(13.5, -64, 2.8, 2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(8, -61.5, 1.2, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Schnauze
+    ctx.fillStyle = '#FFF0F0';
+    ctx.beginPath();
+    ctx.ellipse(0, -47, 13, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = M.nase;
+    ctx.beginPath();
+    ctx.ellipse(0, -54, 6, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath();
+    ctx.ellipse(-2, -56, 2, 1.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = M.nase;
+    ctx.lineWidth   = 1.8;
+    ctx.lineCap     = 'round';
+    ctx.beginPath(); ctx.moveTo(0, -49); ctx.lineTo(0, -44); ctx.stroke();
+
+    ctx.strokeStyle = M.mund;
+    ctx.lineWidth   = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(-9, -44);
+    ctx.quadraticCurveTo(0, -38, 9, -44);
+    ctx.stroke();
+}
+
+// ── Blasen zeichnen ────────────────────────────────────────────────────────
+function blasenZeichnen() {
+    for (const b of blasen) {
+        if (b.weg) continue;
+        ctx.save();
+
+        // Wackeln nach Fehlklick
+        const wx = b.wackelT > 0 ? Math.sin(b.wackelT * 0.9) * 5 : 0;
+        ctx.translate(b.x + wx, b.y);
+
+        if (b.leuchtet) {
+            ctx.shadowColor = '#FFD700';
+            ctx.shadowBlur  = 30 + Math.sin(b.glowT) * 16;
+        }
+
+        // Seifenblase: getönte Füllung mit hellem Verlauf
+        const grad = ctx.createRadialGradient(-14, -16, 4, 0, 0, BLASE_R);
+        grad.addColorStop(0,    'rgba(255,255,255,0.9)');
+        grad.addColorStop(0.35, b.farbe + 'CC');
+        grad.addColorStop(1,    b.farbe);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, BLASE_R, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (b.leuchtet) {
+            ctx.strokeStyle = `rgba(255,220,0,${0.7 + Math.sin(b.glowT) * 0.3})`;
+            ctx.lineWidth   = 5;
+        } else {
+            ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+            ctx.lineWidth   = 2.5;
+        }
+        ctx.shadowBlur = 0;
+        ctx.stroke();
+
+        // Glanzpunkt oben links
+        ctx.fillStyle = 'rgba(255,255,255,0.65)';
+        ctx.beginPath();
+        ctx.ellipse(-16, -20, 9, 5.5, -0.6, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle    = 'white';
+        ctx.font         = b.zeichen.length > 1 ? 'bold 36px Arial' : 'bold 52px Arial';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(b.zeichen, 0, 3);
+        ctx.restore();
+    }
+}
+
+// ── HUD ────────────────────────────────────────────────────────────────────
+function anzeigeZeichnen() {
+    // Zielbox – nur in den ersten drei Runden
+    if (punkte < 3) {
+        ctx.fillStyle = 'rgba(0,0,0,0.42)';
+        rundesRechteck(W / 2 - 155, 8, 310, 72, 16);
+        ctx.fill();
+        ctx.fillStyle    = '#FFD700';
+        ctx.font         = 'bold 17px Arial';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(aktiverLevel === 1 ? 'Finde den Buchstaben:' : 'Finde die Zahl:', W / 2, 31);
+        ctx.fillStyle = 'white';
+        ctx.font      = 'bold 38px Arial';
+        ctx.fillText(ziel, W / 2, 68);
+    }
+
+    // Knochen-Fortschritt
+    ctx.fillStyle    = '#E91E8C';
+    ctx.font         = 'bold 22px Arial';
+    ctx.textAlign    = 'right';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(`🦴 ${punkte} / ${ZIEL_PRO_LEVEL}`, W - 14, 40);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.font      = '13px Arial';
+    ctx.fillText(aktiverLevel === 1 ? 'Level 1: Buchstaben' : 'Level 2: Zahlen', W - 14, 60);
+
+    // Leuchthinweis
+    if (punkte < GLOW_UNTIL) {
+        const hinweis = aktiverLevel === 1
+            ? '✨ Die richtige Blase leuchtet golden – tippe sie an!'
+            : '✨ Die richtige Zahl leuchtet golden – tippe sie an!';
+        ctx.fillStyle    = 'rgba(255,200,0,0.72)';
+        ctx.font         = '14px Arial';
+        ctx.textAlign    = 'center';
+        ctx.fillText(hinweis, W / 2, H - 70);
+    }
+}
+
+// ── Flash-Overlay (nur bei Erfolg, kein rotes Schimpfen) ───────────────────
+function flashZeichnen() {
+    if (flashTimer <= 0) return;
+    const alpha = Math.min(1, flashTimer / 25) * 0.3;
+    ctx.fillStyle = `rgba(0,200,80,${alpha})`;
+    ctx.fillRect(0, 0, W, H);
+    if (flashTimer > 45) {
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font         = 'bold 72px Arial';
+        ctx.fillStyle    = 'white';
+        ctx.fillText(`🦴 SUPER! 🦴`, W / 2, H / 2 - 18);
+        ctx.font         = 'bold 54px Arial';
+        ctx.fillStyle    = '#FFD700';
+        ctx.fillText(letzterTreffer, W / 2, H / 2 + 46);
+    }
+}
+
+// ── Partikel ───────────────────────────────────────────────────────────────
+function partikelZeichnen() {
+    for (const p of partikel) {
+        ctx.save();
+        ctx.globalAlpha = p.leben;
+        ctx.fillStyle   = p.farbe;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+// ── Bildschirme ────────────────────────────────────────────────────────────
+function startbildschirmZeichnen() {
+    hintergrundZeichnen();
+    ctx.fillStyle = 'rgba(0,0,0,0.52)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle    = '#FFD700';
+    ctx.font         = 'bold 52px Arial';
+    ctx.fillText('🫧 Buchstaben Blasen! 🫧', W / 2, 145);
+    ctx.fillStyle    = 'white';
+    ctx.font         = '24px Arial';
+    ctx.fillText('Tippe auf die Blase mit dem richtigen Buchstaben!', W / 2, 210);
+    ctx.fillText('Du kannst nichts falsch machen – probier es einfach!', W / 2, 247);
+    ctx.fillStyle    = '#FFB6C1';
+    ctx.font         = '20px Arial';
+    ctx.fillText('🖱️ Klicken oder 👆 Tippen – mehr brauchst du nicht!', W / 2, 308);
+    ctx.fillStyle    = '#E91E8C';
+    rundesRechteck(W / 2 - 130, 358, 260, 62, 31);
+    ctx.fill();
+    ctx.fillStyle    = 'white';
+    ctx.font         = 'bold 30px Arial';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('START!', W / 2, 389);
+    ctx.fillStyle    = 'rgba(255,255,255,0.45)';
+    ctx.font         = '16px Arial';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('Einfach irgendwo klicken', W / 2, 470);
+}
+
+function levelZwischenZeichnen() {
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0,    '#7B1FA2');
+    grad.addColorStop(0.35, '#E91E63');
+    grad.addColorStop(0.7,  '#FF9800');
+    grad.addColorStop(1,    '#FFCC80');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(0,0,0,0.60)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle    = '#FFD700';
+    ctx.font         = 'bold 54px Arial';
+    ctx.fillText('🎉 Buchstaben geschafft! 🎉', W / 2, 148);
+    ctx.fillStyle    = 'white';
+    ctx.font         = '28px Arial';
+    ctx.fillText('Super gemacht! Jetzt kommen', W / 2, 212);
+    ctx.fillStyle    = '#FF9800';
+    ctx.font         = 'bold 52px Arial';
+    ctx.fillText('Zahlen von 0 bis 20!', W / 2, 285);
+    ctx.fillStyle    = 'white';
+    ctx.font         = '26px Arial';
+    ctx.fillText('Tippe wieder auf die richtige Blase!', W / 2, 340);
+    ctx.fillStyle    = '#E91E8C';
+    rundesRechteck(W / 2 - 140, 372, 280, 62, 31);
+    ctx.fill();
+    ctx.fillStyle    = 'white';
+    ctx.font         = 'bold 28px Arial';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Level 2 starten! 🔢', W / 2, 403);
+}
+
+function gewonnenZeichnen() {
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0,    '#7B1FA2');
+    grad.addColorStop(0.35, '#E91E63');
+    grad.addColorStop(0.7,  '#FF9800');
+    grad.addColorStop(1,    '#FFCC80');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(0,0,0,0.58)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle    = '#FFD700';
+    ctx.font         = 'bold 50px Arial';
+    ctx.fillText('🏆 Alle Zahlen gefunden! 🏆', W / 2, 148);
+    ctx.fillStyle    = 'white';
+    ctx.font         = '27px Arial';
+    ctx.fillText('Wahnsinn! Du bist ein Zahlen-Profi!', W / 2, 215);
+    ctx.fillStyle    = '#FF9800';
+    ctx.font         = '26px Arial';
+    ctx.fillText('Buchstaben UND Zahlen gemeistert! 🐾', W / 2, 260);
+    ctx.font = '56px Arial';
+    ctx.fillStyle = 'white';
+    ctx.fillText('🦴🦴🦴', W / 2, 330);
+    ctx.fillStyle    = '#E91E8C';
+    rundesRechteck(W / 2 - 130, 358, 260, 62, 31);
+    ctx.fill();
+    ctx.fillStyle    = 'white';
+    ctx.font         = 'bold 26px Arial';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Nochmal spielen!', W / 2, 389);
+}
+
+// ── Hauptschleife ──────────────────────────────────────────────────────────
+zustand      = 'start';
+aktiverLevel = 1;
+blasen       = [];
+partikel     = [];
+spieler      = spielerErstellen();
+punkte       = 0;
+
+function zeichnen() {
+    ctx.clearRect(0, 0, W, H);
+    if (zustand === 'start')         { startbildschirmZeichnen(); return; }
+    if (zustand === 'gewonnen')      { gewonnenZeichnen();        return; }
+    if (zustand === 'levelzwischen') { levelZwischenZeichnen();   return; }
+    hintergrundZeichnen();
+    blasenZeichnen();
+    spielerZeichnen();
+    partikelZeichnen();
+    anzeigeZeichnen();
+    flashZeichnen();
+}
+
+function schleife() { update(); zeichnen(); requestAnimationFrame(schleife); }
+schleife();
+</script>
+</body>
+</html>
