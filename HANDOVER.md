@@ -63,8 +63,10 @@ function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
   war dem User zu aufdringlich
 - **Bellen** (`bellen()`): Sägezahn-Oszillator + Bandpass-Filter, 2 Bellen-Impulse
 - Bark-Volume bewusst lauter als Musik gesetzt
-- **Glow entfernt (2026-06-11):** Die Ziel-Blase leuchtete früher golden (GLOW_UNTIL) — erschwerte
-  laut User das Lesen des Buchstabens; Markierung + Hinweistext komplett entfernt
+- **Blasen-Optik (2026-06-11):** Der weiße **Lichtreflex** (Glanz-Verlauf + Glanzpunkt-Ellipse) auf
+  den Blasen lag teils über dem Buchstaben → entfernt, Füllung jetzt dezenter Farbverlauf ohne Weiß.
+  Der **goldene Ziel-Glow** (GLOW_UNTIL, erste 6 Runden) ist bewusst DRIN — der User wollte ihn
+  behalten (kurzzeitig fälschlich entfernt, weil "Glow" missverstanden wurde)
 
 ### Marshall-Charakter (in beiden Spielen identisch)
 - Dalmatiner: weiß/schwarz-gefleckt, runder Kopf mit Schnauze
