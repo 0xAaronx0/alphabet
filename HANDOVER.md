@@ -75,13 +75,19 @@ function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
 ### Zuletzt committed (c12781a)
 `blasen.html` wurde erstellt und gepusht. Beide Spiele sind funktionsfähig.
 
-### Offene Aufgabe: VPS-Hosting
-Der User möchte die Spiele auf seinem **Hostinger-VPS** hosten statt per curl-Download.
+### ✅ ERLEDIGT (2026-06-10): VPS-Hosting — Spiele sind live
 
-- **Hostinger MCP** war in früheren Sessions verbunden, ist aber in der aktuellen Session **nicht aktiv**
-- MCP-Tool-Prefix in funktionierenden Sessions: prüfe `~/.claude/` Settings für Hostinger-MCP-Konfiguration
-- Ziel: `index.html` und `blasen.html` auf dem VPS unter einer URL erreichbar machen (nginx)
-- Der User hat SSH-Key-Zugang und nginx läuft auf dem VPS
+**https://abc.kitescout.tech** — Startseite mit zwei großen Buttons:
+- `/blasen.html` — Buchstaben-Blasen (Haupt-Spiel)
+- `/fang.html` — Buchstaben Fang (= `index.html` aus dem Repo, auf dem Server umbenannt)
+- `/` — neue kindgerechte Startseite (liegt nur auf dem Server, nicht im Repo)
+
+Setup (gleiches Muster wie `cruise-map`/`nabla-dashboard` auf dem KiteScout-VPS):
+- Hostinger-VPS `1601314` (`187.77.70.112`), Dateien unter `/docker/alphabet/html/`
+- Docker-Projekt `alphabet`: `nginx:alpine` + Traefik-Labels `Host(abc.kitescout.tech)`, websecure + letsencrypt
+- DNS: A-Record `abc.kitescout.tech` → `187.77.70.112` (TTL 300)
+- SSH vom Mac: `ssh -i ~/.ssh/hostinger_vps root@187.77.70.112` (IPv6-Alias `hostinger` geht nur in Netzen mit IPv6)
+- Spiel-Update deployen: neue Datei per `scp` nach `/docker/alphabet/html/` — kein Container-Neustart nötig
 
 ### Bekannte Bugs (unbestätigt behoben)
 - Sprachausgabe (`speechSynthesis`) wurde in mehreren Sessions als "still silent" gemeldet
