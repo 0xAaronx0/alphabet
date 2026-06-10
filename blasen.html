@@ -43,7 +43,6 @@ resize();
 const GROUND     = H - 60;
 const BLASE_R    = 48;
 const ZIEL_PRO_LEVEL = 15;
-const GLOW_UNTIL = 6;
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 const ZAHLEN   = Array.from({length: 21}, (_, i) => String(i)); // 0–20
@@ -119,38 +118,22 @@ function superSprechen() {
     sprechen('Super!', 0.9, 1.5);
 }
 
-// ── Hintergrundmusik (Web Audio API) ──────────────────────────────────────
-const MELODIE_NOTEN = [
-    [523.25,1],[659.25,1],[783.99,2],
-    [880.00,1],[783.99,1],[659.25,2],
-    [659.25,1],[523.25,1],[587.33,2],
-    [659.25,1],[783.99,1],[523.25,2],
-    [440.00,1],[523.25,1],[659.25,2],
-    [783.99,1],[659.25,1],[523.25,2],
-    [587.33,1],[659.25,1],[783.99,2],
-    [880.00,1],[659.25,1],[523.25,2],
+// ── Hintergrundmusik: sehr dezente Spieluhr ────────────────────────────────
+// Einzelne, leise Glöckchen-Töne mit vielen Pausen (C-Dur-Pentatonik).
+// [Hz, Schläge] — Hz 0 = Pause.
+const SPIELUHR_NOTEN = [
+    [523.25,2],[659.25,2],[783.99,3],[0,1],
+    [880.00,2],[783.99,2],[659.25,3],[0,3],
+    [587.33,2],[659.25,2],[523.25,3],[0,1],
+    [440.00,2],[523.25,2],[392.00,3],[0,3],
 ];
-const BASS_NOTEN = [
-    [130.81,4],[196.00,4],[220.00,4],[174.61,4],
-    [130.81,4],[196.00,4],[261.63,4],[196.00,4],
-];
-const AKKORD_NOTEN = [
-    [[261.63,329.63,392.00],4],
-    [[196.00,246.94,293.66],4],
-    [[220.00,261.63,329.63],4],
-    [[174.61,220.00,261.63],4],
-    [[261.63,329.63,392.00],4],
-    [[196.00,246.94,293.66],4],
-    [[261.63,329.63,392.00],4],
-    [[196.00,246.94,293.66],4],
-];
-const BPM   = 108;
+const BPM   = 54;
 const SCHLAG = 60 / BPM;
 
 let audioCtx     = null;
 let masterGain   = null;
-let melIdx = 0, bassIdx = 0, akkIdx = 0;
-let melZeit = 0, bassZeit = 0, akkZeit = 0;
+let melIdx = 0;
+let melZeit = 0;
 
 function musikStarten() {
     if (audioCtx) {
@@ -168,10 +151,9 @@ function musikStarten() {
 
     masterGain.connect(komp);
     komp.connect(audioCtx.destination);
-    masterGain.gain.setValueAtTime(0.14, audioCtx.currentTime);
+    masterGain.gain.setValueAtTime(0.07, audioCtx.currentTime);
 
-    const jetzt = audioCtx.currentTime + 0.15;
-    melZeit = bassZeit = akkZeit = jetzt;
+    melZeit = audioCtx.currentTime + 0.15;
     musikSchedulieren();
 }
 
@@ -224,57 +206,34 @@ function ploppen() {
     osc.start(t); osc.stop(t + 0.14);
 }
 
-function musikNote(hz, start, dauer, lautst, typ, tiefpass = 0) {
-    const osc  = audioCtx.createOscillator();
-    const env  = audioCtx.createGain();
-    const att  = Math.min(0.04, dauer * 0.08);
-    const rel  = Math.min(0.12, dauer * 0.25);
-
-    osc.type = typ;
-    osc.frequency.setValueAtTime(hz, start);
-    env.gain.setValueAtTime(0, start);
-    env.gain.linearRampToValueAtTime(lautst, start + att);
-    env.gain.setValueAtTime(lautst * 0.75, start + dauer - rel);
-    env.gain.linearRampToValueAtTime(0, start + dauer);
-
-    if (tiefpass) {
-        const f = audioCtx.createBiquadFilter();
-        f.type = 'lowpass';
-        f.frequency.setValueAtTime(tiefpass, start);
-        f.Q.value = 0.8;
-        osc.connect(f); f.connect(env);
-    } else {
-        osc.connect(env);
-    }
-    env.connect(masterGain);
-    osc.start(start);
-    osc.stop(start + dauer + 0.02);
+// Glöckchen-Ton wie aus einer Spieluhr: schneller Anschlag, langes Ausklingen
+function spieluhrNote(hz, start) {
+    const dauer = 2.2;
+    [[hz, 0.10], [hz * 3, 0.018]].forEach(([f, v]) => {
+        const osc = audioCtx.createOscillator();
+        const env = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, start);
+        env.gain.setValueAtTime(0, start);
+        env.gain.linearRampToValueAtTime(v, start + 0.008);
+        env.gain.exponentialRampToValueAtTime(0.0001, start + dauer);
+        osc.connect(env); env.connect(masterGain);
+        osc.start(start);
+        osc.stop(start + dauer + 0.05);
+    });
 }
 
 function musikSchedulieren() {
     if (!audioCtx) return;
-    const bis = audioCtx.currentTime + 0.55;
+    const bis = audioCtx.currentTime + 0.6;
 
     while (melZeit < bis) {
-        const [hz, s] = MELODIE_NOTEN[melIdx];
-        musikNote(hz, melZeit, s * SCHLAG * 0.82, 0.16, 'triangle');
+        const [hz, s] = SPIELUHR_NOTEN[melIdx];
+        if (hz) spieluhrNote(hz, melZeit);
         melZeit += s * SCHLAG;
-        melIdx   = (melIdx + 1) % MELODIE_NOTEN.length;
+        melIdx   = (melIdx + 1) % SPIELUHR_NOTEN.length;
     }
-    while (bassZeit < bis) {
-        const [hz, s] = BASS_NOTEN[bassIdx];
-        musikNote(hz, bassZeit, s * SCHLAG * 0.65, 0.18, 'sine');
-        bassZeit += s * SCHLAG;
-        bassIdx   = (bassIdx + 1) % BASS_NOTEN.length;
-    }
-    while (akkZeit < bis) {
-        const [noten, s] = AKKORD_NOTEN[akkIdx];
-        const d = s * SCHLAG * 0.88;
-        for (const hz of noten) musikNote(hz, akkZeit, d, 0.055, 'sine', 700);
-        akkZeit += s * SCHLAG;
-        akkIdx   = (akkIdx + 1) % AKKORD_NOTEN.length;
-    }
-    setTimeout(musikSchedulieren, 200);
+    setTimeout(musikSchedulieren, 250);
 }
 
 // ── Spielzustand ───────────────────────────────────────────────────────────
@@ -311,12 +270,8 @@ function naechstesZiel() {
 
 function zielSetzen(t) {
     ziel = t;
-    const leuchtet = punkte < GLOW_UNTIL;
     for (const b of blasen) {
-        if (!b.weg) {
-            b.istZiel  = b.zeichen === ziel;
-            b.leuchtet = leuchtet && b.istZiel;
-        }
+        if (!b.weg) b.istZiel = b.zeichen === ziel;
     }
 }
 
@@ -378,7 +333,6 @@ function blasenSpawnen() {
         zeichen = falsche[Math.floor(Math.random() * falsche.length)];
     }
 
-    const leuchtet = punkte < GLOW_UNTIL;
     blasen.push({
         zeichen,
         x0       : BLASE_R + 20 + Math.random() * (W - BLASE_R * 2 - 40),
@@ -389,8 +343,6 @@ function blasenSpawnen() {
         schwingA : 14 + Math.random() * 18,
         istZiel  : zeichen === ziel,
         farbe    : farbArray[menge.indexOf(zeichen) % farbArray.length],
-        leuchtet : leuchtet && zeichen === ziel,
-        glowT    : 0,
         wackelT  : 0,
         weg      : false
     });
@@ -401,7 +353,6 @@ function blasenBewegen() {
         if (b.weg) continue;
         b.y        -= b.vy;
         b.schwingT += 0.018;
-        b.glowT    += 0.06;
         if (b.wackelT > 0) b.wackelT--;
         b.x = b.x0 + Math.sin(b.schwingT) * b.schwingA;
         if (b.y < -BLASE_R) b.weg = true;
@@ -842,11 +793,6 @@ function blasenZeichnen() {
         const wx = b.wackelT > 0 ? Math.sin(b.wackelT * 0.9) * 5 : 0;
         ctx.translate(b.x + wx, b.y);
 
-        if (b.leuchtet) {
-            ctx.shadowColor = '#FFD700';
-            ctx.shadowBlur  = 30 + Math.sin(b.glowT) * 16;
-        }
-
         // Seifenblase: getönte Füllung mit hellem Verlauf
         const grad = ctx.createRadialGradient(-14, -16, 4, 0, 0, BLASE_R);
         grad.addColorStop(0,    'rgba(255,255,255,0.9)');
@@ -857,14 +803,8 @@ function blasenZeichnen() {
         ctx.arc(0, 0, BLASE_R, 0, Math.PI * 2);
         ctx.fill();
 
-        if (b.leuchtet) {
-            ctx.strokeStyle = `rgba(255,220,0,${0.7 + Math.sin(b.glowT) * 0.3})`;
-            ctx.lineWidth   = 5;
-        } else {
-            ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-            ctx.lineWidth   = 2.5;
-        }
-        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.lineWidth   = 2.5;
         ctx.stroke();
 
         // Glanzpunkt oben links
@@ -909,16 +849,6 @@ function anzeigeZeichnen() {
     ctx.font      = '13px Arial';
     ctx.fillText(aktiverLevel === 1 ? 'Level 1: Buchstaben' : 'Level 2: Zahlen', W - 14, 60);
 
-    // Leuchthinweis
-    if (punkte < GLOW_UNTIL) {
-        const hinweis = aktiverLevel === 1
-            ? '✨ Die richtige Blase leuchtet golden – tippe sie an!'
-            : '✨ Die richtige Zahl leuchtet golden – tippe sie an!';
-        ctx.fillStyle    = 'rgba(255,200,0,0.72)';
-        ctx.font         = '14px Arial';
-        ctx.textAlign    = 'center';
-        ctx.fillText(hinweis, W / 2, H - 70);
-    }
 }
 
 // ── Flash-Overlay (nur bei Erfolg, kein rotes Schimpfen) ───────────────────

@@ -1,15 +1,26 @@
 import asyncio, os, sys
 import edge_tts
 
-VOICE = "de-DE-KatjaNeural"
+VOICE = "de-DE-AmalaNeural"
 RATE = "-12%"
 OUT = "audio"
 
+# Ausgeschriebene deutsche Buchstabennamen — verhindert, dass die TTS einzelne
+# Buchstaben englisch ausspricht ("find i" statt "finde i").
+BUCHSTABEN_NAMEN = {
+    "a": "Ah",  "b": "Beh", "c": "Zeh", "d": "Deh", "e": "Eh",  "f": "Eff",
+    "g": "Geh", "h": "Ha",  "i": "Ih",  "j": "Jot", "k": "Kah", "l": "El",
+    "m": "Em",  "n": "En",  "o": "Oh",  "p": "Peh", "q": "Ku",  "r": "Er",
+    # "Ix" wuerde als roemische Zahl IX ("neun") gelesen — deshalb "Iks"
+    "s": "Es",  "t": "Teh", "u": "Uh",  "v": "Vau", "w": "Weh", "x": "Iks",
+    "y": "Ypsilon", "z": "Zett",
+}
+
 entries = {}
-for c in "abcdefghijklmnopqrstuvwxyz":
-    entries[f"finde_{c}"] = f"Finde {c.upper()}!"
-    entries[f"hoppla_such_{c}"] = f"Hoppla! Such das {c.upper()}!"
-    entries[f"nein_such_{c}"] = f"Nein! Such das {c.upper()}!"
+for c, name in BUCHSTABEN_NAMEN.items():
+    entries[f"finde_{c}"] = f"Finde {name}!"
+    entries[f"hoppla_such_{c}"] = f"Hoppla! Such das {name}!"
+    entries[f"nein_such_{c}"] = f"Nein! Such das {name}!"
 for n in range(21):
     entries[f"finde_{n}"] = f"Finde {n}!"
     entries[f"hoppla_such_{n}"] = f"Hoppla! Such die {n}!"

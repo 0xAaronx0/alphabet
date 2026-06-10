@@ -57,9 +57,14 @@ function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
 
 ### Web Audio API
 - `AudioContext` wird beim ersten User-Interaktion erstellt (Browser-Policy)
-- **Pentatonische Hintergrundmusik** (C-Dur Pentatonik, sanfte Oszillatoren + Kompressor)
+- **Hintergrundmusik seit 2026-06-11: sehr dezente "Spieluhr"** (`SPIELUHR_NOTEN`/`spieluhrNote()`):
+  einzelne Sinus-Glöckchen (Grundton + leiser 3. Teilton, langes Ausklingen), C-Dur-Pentatonik,
+  54 BPM, viele Pausen, masterGain 0.07 — die alte Melodie+Bass+Akkorde-Version (108 BPM, 0.14)
+  war dem User zu aufdringlich
 - **Bellen** (`bellen()`): Sägezahn-Oszillator + Bandpass-Filter, 2 Bellen-Impulse
 - Bark-Volume bewusst lauter als Musik gesetzt
+- **Glow entfernt (2026-06-11):** Die Ziel-Blase leuchtete früher golden (GLOW_UNTIL) — erschwerte
+  laut User das Lesen des Buchstabens; Markierung + Hinweistext komplett entfernt
 
 ### Marshall-Charakter (in beiden Spielen identisch)
 - Dalmatiner: weiß/schwarz-gefleckt, runder Kopf mit Schnauze
@@ -91,9 +96,14 @@ Setup (gleiches Muster wie `cruise-map`/`nabla-dashboard` auf dem KiteScout-VPS)
 
 ### ✅ Sprachausgabe (Stand 2026-06-10)
 - User bestätigt: Sprachausgabe **funktioniert** — aber die Systemstimme klang unangenehm
-- Deshalb umgestellt auf **vorab erzeugte MP3-Clips** (Microsoft `de-DE-KatjaNeural` via edge-tts, Rate −12%):
+- Deshalb umgestellt auf **vorab erzeugte MP3-Clips** (Microsoft `de-DE-AmalaNeural` via edge-tts, Rate −12%; vorher Katja — User fand sie unangenehm):
   - `audio/` — 145 Clips (finde_X, hoppla_such_X, nein_such_X für a–z + 0–20, plus 4 Festsätze)
   - `gen_audio.py` erzeugt sie neu: `uv run --with edge-tts python gen_audio.py`
+  - **Buchstaben werden ausgeschrieben** ("Beh", "Zeh", "Iks"…) — einzelne Großbuchstaben las die
+    TTS teils englisch ("find i"); ACHTUNG: "Ix" wird als römische Zahl IX ("neun") gelesen → "Iks"!
+  - Sprach-Check: `uv run --with faster-whisper python check_audio.py` (Whisper-Transkription;
+    Sprach-Erkennung bei 2-s-Clips notorisch unzuverlässig — im Zweifel mit language="de" forcieren
+    und Transkript lesen; identische md5-Hashes zweier Clips = falsch normalisierter Text)
   - `sprechen()` spielt jetzt den passenden Clip über EIN wiederverwendetes `Audio`-Element
     (iOS entsperrt es bei der ersten Geste); Dateiname = `audioSchluessel(text)` (Slug des gesprochenen Texts)
   - **Web Speech bleibt als Fallback** — der alte Safari-Fix (sync vor AudioContext, kein setTimeout) gilt dort weiterhin

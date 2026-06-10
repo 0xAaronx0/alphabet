@@ -128,39 +128,22 @@ function superSprechen() {
     sprechen('Super!', 0.9, 1.5);
 }
 
-// ── Hintergrundmusik (Web Audio API) ──────────────────────────────────────
-// Pentatonische C-Dur-Melodie, 32 Schläge, ~17 s Loop
-const MELODIE_NOTEN = [
-    [523.25,1],[659.25,1],[783.99,2],   // C5 E5 G5
-    [880.00,1],[783.99,1],[659.25,2],   // A5 G5 E5
-    [659.25,1],[523.25,1],[587.33,2],   // E5 C5 D5
-    [659.25,1],[783.99,1],[523.25,2],   // E5 G5 C5
-    [440.00,1],[523.25,1],[659.25,2],   // A4 C5 E5
-    [783.99,1],[659.25,1],[523.25,2],   // G5 E5 C5
-    [587.33,1],[659.25,1],[783.99,2],   // D5 E5 G5
-    [880.00,1],[659.25,1],[523.25,2],   // A5 E5 C5
+// ── Hintergrundmusik: sehr dezente Spieluhr ────────────────────────────────
+// Einzelne, leise Glöckchen-Töne mit vielen Pausen (C-Dur-Pentatonik).
+// [Hz, Schläge] — Hz 0 = Pause.
+const SPIELUHR_NOTEN = [
+    [523.25,2],[659.25,2],[783.99,3],[0,1],
+    [880.00,2],[783.99,2],[659.25,3],[0,3],
+    [587.33,2],[659.25,2],[523.25,3],[0,1],
+    [440.00,2],[523.25,2],[392.00,3],[0,3],
 ];
-const BASS_NOTEN = [
-    [130.81,4],[196.00,4],[220.00,4],[174.61,4],
-    [130.81,4],[196.00,4],[261.63,4],[196.00,4],
-];
-const AKKORD_NOTEN = [
-    [[261.63,329.63,392.00],4], // C
-    [[196.00,246.94,293.66],4], // G
-    [[220.00,261.63,329.63],4], // Am
-    [[174.61,220.00,261.63],4], // F
-    [[261.63,329.63,392.00],4], // C
-    [[196.00,246.94,293.66],4], // G
-    [[261.63,329.63,392.00],4], // C
-    [[196.00,246.94,293.66],4], // G
-];
-const BPM   = 108;
+const BPM   = 54;
 const SCHLAG = 60 / BPM;
 
 let audioCtx     = null;
 let masterGain   = null;
-let melIdx = 0, bassIdx = 0, akkIdx = 0;
-let melZeit = 0, bassZeit = 0, akkZeit = 0;
+let melIdx = 0;
+let melZeit = 0;
 
 function musikStarten() {
     if (audioCtx) {
@@ -180,10 +163,9 @@ function musikStarten() {
 
     masterGain.connect(komp);
     komp.connect(audioCtx.destination);
-    masterGain.gain.setValueAtTime(0.14, audioCtx.currentTime);
+    masterGain.gain.setValueAtTime(0.07, audioCtx.currentTime);
 
-    const jetzt = audioCtx.currentTime + 0.15;
-    melZeit = bassZeit = akkZeit = jetzt;
+    melZeit = audioCtx.currentTime + 0.15;
     musikSchedulieren();
 }
 
@@ -222,57 +204,34 @@ function bellen() {
     });
 }
 
-function musikNote(hz, start, dauer, lautst, typ, tiefpass = 0) {
-    const osc  = audioCtx.createOscillator();
-    const env  = audioCtx.createGain();
-    const att  = Math.min(0.04, dauer * 0.08);
-    const rel  = Math.min(0.12, dauer * 0.25);
-
-    osc.type = typ;
-    osc.frequency.setValueAtTime(hz, start);
-    env.gain.setValueAtTime(0, start);
-    env.gain.linearRampToValueAtTime(lautst, start + att);
-    env.gain.setValueAtTime(lautst * 0.75, start + dauer - rel);
-    env.gain.linearRampToValueAtTime(0, start + dauer);
-
-    if (tiefpass) {
-        const f = audioCtx.createBiquadFilter();
-        f.type = 'lowpass';
-        f.frequency.setValueAtTime(tiefpass, start);
-        f.Q.value = 0.8;
-        osc.connect(f); f.connect(env);
-    } else {
-        osc.connect(env);
-    }
-    env.connect(masterGain);
-    osc.start(start);
-    osc.stop(start + dauer + 0.02);
+// Glöckchen-Ton wie aus einer Spieluhr: schneller Anschlag, langes Ausklingen
+function spieluhrNote(hz, start) {
+    const dauer = 2.2;
+    [[hz, 0.10], [hz * 3, 0.018]].forEach(([f, v]) => {
+        const osc = audioCtx.createOscillator();
+        const env = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, start);
+        env.gain.setValueAtTime(0, start);
+        env.gain.linearRampToValueAtTime(v, start + 0.008);
+        env.gain.exponentialRampToValueAtTime(0.0001, start + dauer);
+        osc.connect(env); env.connect(masterGain);
+        osc.start(start);
+        osc.stop(start + dauer + 0.05);
+    });
 }
 
 function musikSchedulieren() {
     if (!audioCtx) return;
-    const bis = audioCtx.currentTime + 0.55;
+    const bis = audioCtx.currentTime + 0.6;
 
     while (melZeit < bis) {
-        const [hz, s] = MELODIE_NOTEN[melIdx];
-        musikNote(hz, melZeit, s * SCHLAG * 0.82, 0.16, 'triangle');
+        const [hz, s] = SPIELUHR_NOTEN[melIdx];
+        if (hz) spieluhrNote(hz, melZeit);
         melZeit += s * SCHLAG;
-        melIdx   = (melIdx + 1) % MELODIE_NOTEN.length;
+        melIdx   = (melIdx + 1) % SPIELUHR_NOTEN.length;
     }
-    while (bassZeit < bis) {
-        const [hz, s] = BASS_NOTEN[bassIdx];
-        musikNote(hz, bassZeit, s * SCHLAG * 0.65, 0.18, 'sine');
-        bassZeit += s * SCHLAG;
-        bassIdx   = (bassIdx + 1) % BASS_NOTEN.length;
-    }
-    while (akkZeit < bis) {
-        const [noten, s] = AKKORD_NOTEN[akkIdx];
-        const d = s * SCHLAG * 0.88;
-        for (const hz of noten) musikNote(hz, akkZeit, d, 0.055, 'sine', 700);
-        akkZeit += s * SCHLAG;
-        akkIdx   = (akkIdx + 1) % AKKORD_NOTEN.length;
-    }
-    setTimeout(musikSchedulieren, 200);
+    setTimeout(musikSchedulieren, 250);
 }
 
 // ── Spielzustand ───────────────────────────────────────────────────────────
