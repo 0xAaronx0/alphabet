@@ -43,6 +43,7 @@ resize();
 const GROUND     = H - 60;
 const BLASE_R    = 48;
 const ZIEL_PRO_LEVEL = 15;
+const GLOW_UNTIL = 6;
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 const ZAHLEN   = Array.from({length: 21}, (_, i) => String(i)); // 0–20
@@ -270,8 +271,12 @@ function naechstesZiel() {
 
 function zielSetzen(t) {
     ziel = t;
+    const leuchtet = punkte < GLOW_UNTIL;
     for (const b of blasen) {
-        if (!b.weg) b.istZiel = b.zeichen === ziel;
+        if (!b.weg) {
+            b.istZiel  = b.zeichen === ziel;
+            b.leuchtet = leuchtet && b.istZiel;
+        }
     }
 }
 
@@ -333,6 +338,7 @@ function blasenSpawnen() {
         zeichen = falsche[Math.floor(Math.random() * falsche.length)];
     }
 
+    const leuchtet = punkte < GLOW_UNTIL;
     blasen.push({
         zeichen,
         x0       : BLASE_R + 20 + Math.random() * (W - BLASE_R * 2 - 40),
@@ -343,6 +349,8 @@ function blasenSpawnen() {
         schwingA : 14 + Math.random() * 18,
         istZiel  : zeichen === ziel,
         farbe    : farbArray[menge.indexOf(zeichen) % farbArray.length],
+        leuchtet : leuchtet && zeichen === ziel,
+        glowT    : 0,
         wackelT  : 0,
         weg      : false
     });
@@ -353,6 +361,7 @@ function blasenBewegen() {
         if (b.weg) continue;
         b.y        -= b.vy;
         b.schwingT += 0.018;
+        b.glowT    += 0.06;
         if (b.wackelT > 0) b.wackelT--;
         b.x = b.x0 + Math.sin(b.schwingT) * b.schwingA;
         if (b.y < -BLASE_R) b.weg = true;
@@ -793,25 +802,29 @@ function blasenZeichnen() {
         const wx = b.wackelT > 0 ? Math.sin(b.wackelT * 0.9) * 5 : 0;
         ctx.translate(b.x + wx, b.y);
 
-        // Seifenblase: getönte Füllung mit hellem Verlauf
-        const grad = ctx.createRadialGradient(-14, -16, 4, 0, 0, BLASE_R);
-        grad.addColorStop(0,    'rgba(255,255,255,0.9)');
-        grad.addColorStop(0.35, b.farbe + 'CC');
-        grad.addColorStop(1,    b.farbe);
+        if (b.leuchtet) {
+            ctx.shadowColor = '#FFD700';
+            ctx.shadowBlur  = 30 + Math.sin(b.glowT) * 16;
+        }
+
+        // Seifenblase: dezenter Verlauf ohne Lichtreflex — der Buchstabe bleibt frei
+        const grad = ctx.createRadialGradient(0, 0, BLASE_R * 0.3, 0, 0, BLASE_R);
+        grad.addColorStop(0, b.farbe + 'D9');
+        grad.addColorStop(1, b.farbe);
         ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.arc(0, 0, BLASE_R, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-        ctx.lineWidth   = 2.5;
+        if (b.leuchtet) {
+            ctx.strokeStyle = `rgba(255,220,0,${0.7 + Math.sin(b.glowT) * 0.3})`;
+            ctx.lineWidth   = 5;
+        } else {
+            ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+            ctx.lineWidth   = 2.5;
+        }
+        ctx.shadowBlur = 0;
         ctx.stroke();
-
-        // Glanzpunkt oben links
-        ctx.fillStyle = 'rgba(255,255,255,0.65)';
-        ctx.beginPath();
-        ctx.ellipse(-16, -20, 9, 5.5, -0.6, 0, Math.PI * 2);
-        ctx.fill();
 
         ctx.fillStyle    = 'white';
         ctx.font         = b.zeichen.length > 1 ? 'bold 36px Arial' : 'bold 52px Arial';
@@ -849,6 +862,16 @@ function anzeigeZeichnen() {
     ctx.font      = '13px Arial';
     ctx.fillText(aktiverLevel === 1 ? 'Level 1: Buchstaben' : 'Level 2: Zahlen', W - 14, 60);
 
+    // Leuchthinweis
+    if (punkte < GLOW_UNTIL) {
+        const hinweis = aktiverLevel === 1
+            ? '✨ Die richtige Blase leuchtet golden – tippe sie an!'
+            : '✨ Die richtige Zahl leuchtet golden – tippe sie an!';
+        ctx.fillStyle    = 'rgba(255,200,0,0.72)';
+        ctx.font         = '14px Arial';
+        ctx.textAlign    = 'center';
+        ctx.fillText(hinweis, W / 2, H - 70);
+    }
 }
 
 // ── Flash-Overlay (nur bei Erfolg, kein rotes Schimpfen) ───────────────────
