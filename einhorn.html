@@ -319,6 +319,8 @@ let letzterTreffer = '';
 let spawnTimer     = 0;
 let ansageTimer    = 0;   // bei 0 wird das Ziel (erneut) angesagt
 let weltX          = 0;   // Scroll-Offset (läuft auf)
+let deko           = [];  // Bäume/Tiere/Fabelwesen, die durch die Welt scrollen
+let dekoTimer      = 0;
 let level          = 1;   // 1 = einzelne Buchstaben, 2 = Wörter
 let wortIndex      = 0;   // aktuelles Wort in Level 2
 let gebaut         = '';  // bisher gefangene Buchstaben des Wortes
@@ -379,6 +381,7 @@ function spielStart() {
     flashTimer = 0;
     spawnTimer = 14;
     weltX      = 0;
+    dekoInit();
     schlangeNeuFuellen();
     naechstesZiel();
     // Ansage synchron VOR musikStarten (Safari: speak()/Audio erst nach AudioContext blockiert)
@@ -525,6 +528,8 @@ function update() {
     spieler.blink = (spieler.blink + 1) % 200;
     if (spieler.freudeT > 0) spieler.freudeT--;
 
+    dekoSpawnen();
+    dekoBewegen();
     blasenSpawnen();
     blasenBewegen();
     partikelUpdate();
@@ -729,6 +734,63 @@ function wolkeZeichnen(x, y, groesse, deckkraft) {
         ctx.fill();
     }
     ctx.restore();
+}
+
+// ── Deko: Bäume, Tiere & Fabelwesen, die durch die Welt scrollen ───────────
+const DEKO_BODEN   = ['🌳','🌲','🌸','🌼','🍄','🌷','🌻','🪨','🌿','🪻','🌵','🍀'];
+const DEKO_TIERE   = ['🐰','🦔','🦌','🐸','🦕','🦖','🐢','🐞','🦚','🏰','🌈','🐿️','🦊','🐥','🐌'];  // am Boden
+const DEKO_FLIEGER = ['🦋','🧚','🐦','🦩','🐝'];                                                  // schweben
+
+function dekoItemErzeugen(x) {
+    const r = Math.random();
+    if (r < 0.14) {                              // Flieger (Schmetterling, Fee, Vogel …)
+        const em = DEKO_FLIEGER[Math.floor(Math.random() * DEKO_FLIEGER.length)];
+        deko.push({ em, x, y: 305 + Math.random() * 85, size: 34 + Math.random() * 12,
+            grund: false, bobT: Math.random() * 6 });
+    } else if (r < 0.42) {                       // Boden-Tier / Fabelwesen
+        const em = DEKO_TIERE[Math.floor(Math.random() * DEKO_TIERE.length)];
+        deko.push({ em, x, y: GROUND + 14, size: 48 + Math.random() * 22, grund: true, bobT: 0 });
+    } else {                                     // häufige Bodendeko (Baum, Blume …)
+        const em = DEKO_BODEN[Math.floor(Math.random() * DEKO_BODEN.length)];
+        deko.push({ em, x, y: GROUND + 14, size: 40 + Math.random() * 28, grund: true, bobT: 0 });
+    }
+}
+
+function dekoInit() {
+    deko = [];
+    for (let x = 90; x < W + 90; x += 105 + Math.random() * 110) dekoItemErzeugen(x);
+    dekoTimer = 50 + Math.floor(Math.random() * 50);
+}
+
+function dekoSpawnen() {
+    if (--dekoTimer > 0) return;
+    dekoTimer = 55 + Math.floor(Math.random() * 70);
+    dekoItemErzeugen(W + 60);
+}
+
+function dekoBewegen() {
+    for (const d of deko) { d.x -= WELT_V; d.bobT += 0.05; }
+    deko = deko.filter(d => d.x > -90);
+}
+
+function dekoZeichnen() {
+    ctx.textAlign = 'center';
+    // weicher Schatten, damit auch grüne Bäume vor den grünen Hügeln klar zu sehen sind
+    ctx.shadowColor   = 'rgba(40, 60, 90, 0.28)';
+    ctx.shadowBlur    = 7;
+    ctx.shadowOffsetY = 4;
+    for (const d of deko) {
+        ctx.font = d.size + 'px ' + SCHRIFT;
+        if (d.grund) {
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillText(d.em, d.x, d.y);
+        } else {
+            ctx.textBaseline = 'middle';
+            ctx.fillText(d.em, d.x, d.y + Math.sin(d.bobT) * 6);
+        }
+    }
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.textBaseline = 'alphabetic';
 }
 
 // ── Einhorn (niedlicher Chibi-Stil) ─────────────────────────────────────────
@@ -1141,6 +1203,7 @@ function zeichnen() {
     if (zustand === 'gewonnen')      { gewonnenZeichnen();        return; }
     if (zustand === 'levelzwischen') { levelZwischenZeichnen();   return; }
     hintergrundZeichnen();
+    dekoZeichnen();
     blasenZeichnen();
     spielerZeichnen();
     partikelZeichnen();
