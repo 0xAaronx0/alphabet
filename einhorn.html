@@ -328,13 +328,33 @@ let wortIndex      = 0;   // aktuelles Wort in Level 2
 let gebaut         = '';  // bisher gefangene Buchstaben des Wortes
 let wortFertigPending = false; // nach dem Jubel zum nächsten Wort wechseln
 
-// Level 2: kurze Wörter mit Bild (Emoji)
-const WOERTER = [
-    { wort: 'HAUS', bild: '🏠' },
-    { wort: 'MAUS', bild: '🐭' },
-    { wort: 'WURM', bild: '🪱' },
-    { wort: 'BAUM', bild: '🌳' },
+// Level 2: Vorrat kurzer Wörter mit Bild (Emoji); pro Spiel werden 4 gewählt.
+// Nur Buchstaben A–Z (keine Umlaute/ß) – jeder Buchstabe hat einen Sprach-Clip.
+const WORT_VORRAT = [
+    { wort: 'HAUS',  bild: '🏠' }, { wort: 'MAUS',  bild: '🐭' },
+    { wort: 'WURM',  bild: '🪱' }, { wort: 'BAUM',  bild: '🌳' },
+    { wort: 'BALL',  bild: '⚽' }, { wort: 'AUTO',  bild: '🚗' },
+    { wort: 'HUND',  bild: '🐶' }, { wort: 'KATZE', bild: '🐱' },
+    { wort: 'SONNE', bild: '☀️' }, { wort: 'MOND',  bild: '🌙' },
+    { wort: 'STERN', bild: '⭐' }, { wort: 'BLUME', bild: '🌷' },
+    { wort: 'APFEL', bild: '🍎' }, { wort: 'FISCH', bild: '🐟' },
+    { wort: 'HERZ',  bild: '❤️' }, { wort: 'BOOT',  bild: '⛵' },
+    { wort: 'ENTE',  bild: '🦆' }, { wort: 'KRONE', bild: '👑' },
 ];
+let WOERTER = [];          // die 4 Wörter dieses Spiels
+let letzteWoerter = [];    // Wörter des vorigen Spiels (für „höchstens 2 gleich")
+
+// 4 Wörter aus dem Vorrat wählen – höchstens 2 wie im vorigen Spiel.
+function woerterWaehlen() {
+    let wahl = WORT_VORRAT.slice(0, 4);
+    for (let i = 0; i < 60; i++) {
+        wahl = mischen(WORT_VORRAT).slice(0, 4);
+        const gleich = wahl.filter(w => letzteWoerter.includes(w.wort)).length;
+        if (gleich <= 2) break;
+    }
+    letzteWoerter = wahl.map(w => w.wort);
+    return wahl;
+}
 
 function mischen(a) {
     const b = [...a];
@@ -377,6 +397,7 @@ function spielStart() {
     wortIndex  = 0;
     gebaut     = '';
     punkte     = 0;
+    WOERTER    = woerterWaehlen();   // 4 neue Wörter (höchstens 2 wie zuvor)
     blasen     = [];
     partikel   = [];
     spieler    = spielerErstellen();
@@ -742,29 +763,34 @@ function wolkeZeichnen(x, y, groesse, deckkraft) {
     ctx.restore();
 }
 
-// ── Hintergrund-Deko: Midground (Hügel-Ebene, Parallaxe) + Lufttiere ───────
+// ── Hintergrund-Deko: Bodendeko (eine Ebene vor den Hügeln) + Lufttiere ────
 const SZENE_PFLANZE = ['🌳','🌲','🌳','🌲','🍄','🌸','🌻','🪨','🌷','🌵','🪻','🌿'];
 const SZENE_SELTEN  = ['🏰','🦌','🐰','🦕','🦖','🐿️','🦊','🌈','🦔','🐢','🐑','⛲'];
-const FLIEGER_EM    = ['🦋','🧚','🐦','🐝'];
-const SZENE_V       = WELT_V * 0.45;        // langsamer als das Einhorn → Tiefe
+// typ 'w' = Flügel seitlich (horizontaler Schlag), 's' = Seitenansicht (ganzer Körper)
+const FLIEGER = [
+    { em: '🦋', typ: 'w' },   // Schmetterling
+    { em: '🧚', typ: 'w' },   // Fee
+    { em: '🦜', typ: 's' },   // ganzer Vogel
+    { em: '🐝', typ: 's' },   // Biene
+];
+const SZENE_V       = WELT_V;               // gleiche Ebene/Tempo wie der Boden (vor den Hügeln)
+const DEKO_ALPHA    = 0.6;                  // leicht durchscheinend
 
 function szeneItemErzeugen(x) {
     const selten = Math.random() < 0.22;
     const em = selten
         ? SZENE_SELTEN[Math.floor(Math.random() * SZENE_SELTEN.length)]
         : SZENE_PFLANZE[Math.floor(Math.random() * SZENE_PFLANZE.length)];
-    szene.push({ em, x,
-        baseY: GROUND - 6 - Math.random() * 40,   // im Hügelband (über dem Boden)
-        size : 30 + Math.random() * 22 });
+    szene.push({ em, x, size: 36 + Math.random() * 26 });
 }
 function szeneInit() {
     szene = [];
-    for (let x = 70; x < W + 110; x += 150 + Math.random() * 130) szeneItemErzeugen(x);
-    szeneTimer = 70 + Math.floor(Math.random() * 70);
+    for (let x = 140; x < W + 120; x += 320 + Math.random() * 260) szeneItemErzeugen(x);
+    szeneTimer = 140 + Math.floor(Math.random() * 130);
 }
 function szeneSpawnen() {
     if (--szeneTimer > 0) return;
-    szeneTimer = 130 + Math.floor(Math.random() * 120);
+    szeneTimer = 340 + Math.floor(Math.random() * 300);   // ~60% weniger als zuvor
     szeneItemErzeugen(W + 90);
 }
 function szeneBewegen() {
@@ -773,27 +799,21 @@ function szeneBewegen() {
 }
 function szeneZeichnen() {
     ctx.textAlign = 'center';
-    for (const sc of szene) {
-        // kleines Gras-Hügelchen, damit das Item „auf einem Hügel" sitzt
-        ctx.fillStyle = '#84cf78';
-        ctx.beginPath();
-        ctx.ellipse(sc.x, sc.baseY + 2, sc.size * 0.6, sc.size * 0.24, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowColor = 'rgba(40,60,90,0.20)'; ctx.shadowBlur = 5; ctx.shadowOffsetY = 3;
-        ctx.textBaseline = 'alphabetic';
-        ctx.font = sc.size + 'px ' + SCHRIFT;
-        ctx.fillText(sc.em, sc.x, sc.baseY + 4);
-        ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-    }
     ctx.textBaseline = 'alphabetic';
+    ctx.globalAlpha = DEKO_ALPHA;
+    for (const sc of szene) {
+        ctx.font = sc.size + 'px ' + SCHRIFT;
+        ctx.fillText(sc.em, sc.x, GROUND + 6);   // sitzt direkt auf dem Boden
+    }
+    ctx.globalAlpha = 1;
 }
 
-// Lufttiere: selten, undurchsichtig, flattern nach rechts-oben (anders als die Blasen)
+// Lufttiere: selten, leicht durchscheinend, flattern nach rechts-oben (anders als die Blasen)
 function fliegerSpawnen() {
     if (--fliegerTimer > 0) return;
-    fliegerTimer = 480 + Math.floor(Math.random() * 540);   // selten: alle ~8–17 s
-    const em = FLIEGER_EM[Math.floor(Math.random() * FLIEGER_EM.length)];
-    flieger.push({ em,
+    fliegerTimer = 820 + Math.floor(Math.random() * 760);   // selten: alle ~14–28 s
+    const t = FLIEGER[Math.floor(Math.random() * FLIEGER.length)];
+    flieger.push({ em: t.em, typ: t.typ,
         x: -40,
         y: GROUND - 110 - Math.random() * 130,
         vx: 0.7 + Math.random() * 0.6,
@@ -811,15 +831,23 @@ function fliegerBewegen() {
 }
 function fliegerZeichnen() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.globalAlpha = DEKO_ALPHA;
     for (const f of flieger) {
-        const flap = 0.5 + 0.5 * Math.abs(Math.cos(f.flapT));  // horizontale Stauchung = Flügelschlag
         ctx.save();
         ctx.translate(f.x, f.y);
-        ctx.scale(flap, 1);
+        // gespiegelt (scale x negativ) → Kopf zeigt in Flugrichtung nach rechts
+        if (f.typ === 'w') {                                   // Flügel seitlich: horizontaler Schlag
+            const flap = 0.55 + 0.45 * Math.abs(Math.cos(f.flapT));
+            ctx.scale(-flap, 1);
+        } else {                                               // Vogel/Biene: ganzer Körper, leichtes Auf/Ab
+            const flap = 0.85 + 0.15 * Math.abs(Math.cos(f.flapT));
+            ctx.scale(-1, flap);
+        }
         ctx.font = f.size + 'px ' + SCHRIFT;
         ctx.fillText(f.em, 0, 0);
         ctx.restore();
     }
+    ctx.globalAlpha = 1;
     ctx.textBaseline = 'alphabetic';
 }
 

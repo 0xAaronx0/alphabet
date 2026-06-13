@@ -27,8 +27,10 @@ BUCHSTABEN_NAMEN = {
     "y": "Ypsilon", "z": "Zett",
 }
 
-# Level 2 (Einhorn): kurze Wörter, die buchstabiert werden
-WOERTER = ["Haus", "Maus", "Wurm", "Baum"]
+# Level 2 (Einhorn): Vorrat kurzer Wörter, die buchstabiert werden
+WOERTER = ["Haus", "Maus", "Wurm", "Baum", "Ball", "Auto", "Hund", "Katze",
+           "Sonne", "Mond", "Stern", "Blume", "Apfel", "Fisch", "Herz",
+           "Boot", "Ente", "Krone"]
 
 entries = {}
 entry_voice = {}   # key -> Stimme (Standard: VOICE)

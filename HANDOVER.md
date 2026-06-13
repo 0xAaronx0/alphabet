@@ -45,7 +45,11 @@ Auf dem Server `einhorn.html`.
 **Zwei Level (seit 2026-06-14):**
 - **Level 1** (`level===1`): 15 einzelne Buchstaben fangen → `zustand='levelzwischen'` (Übergangs-Screen)
   → `level2Starten()`.
-- **Level 2** (`level===2`): 4 kurze Wörter buchstabieren (`WOERTER` = HAUS/MAUS/WURM/BAUM mit Emoji-Bild).
+- **Level 2** (`level===2`): 4 kurze Wörter buchstabieren. **Vorrat `WORT_VORRAT` = 18 Wörter** mit
+  Emoji (nur A–Z, keine Umlaute/ß – sonst fehlt der Buchstaben-Clip). Pro Spiel wählt `woerterWaehlen()`
+  4 davon → `WOERTER` (in `spielStart` gesetzt); **höchstens 2 wie im vorigen Spiel** (`letzteWoerter`).
+  Jedes Wort braucht `audio/wort_<wort>.mp3` (alle 18 via `gen_audio.py` erzeugt). Beim Erweitern des
+  Vorrats: Wort-Clip mit erzeugen.
   Jedes Wort startet mit `wortStarten()`: sagt ZUERST das ganze Wort an (`wort_<x>.mp3`), dann (über
   `ansageTimer`≈90) den ersten Buchstaben. `naechstesZiel()` liefert den nächsten fehlenden Buchstaben;
   gefangene Buchstaben sammeln sich in `gebaut` und werden oben links als Wort-Baukasten gezeigt
@@ -76,6 +80,13 @@ Schlüssel-Details:
 - **rAF pausiert im Headless-Preview** → Gameplay deterministisch testen: `update()`+`spielerZeichnen()`
   pro Frame manuell in einer Schleife aufrufen (hält `hornWelt` aktuell), nicht per Auto-Klick/Timer.
 - `funkeln()` (magischer Klang) statt `bellen()` (Hund) beim Fangen.
+- **Deko (rein kosmetisch, `DEKO_ALPHA`=0.6):** `szene` = Bodendeko (Bäume/Schloss/Bodentiere) sitzt
+  am Boden (`GROUND+6`) und scrollt mit `SZENE_V = WELT_V` (gleiche Ebene wie der Boden, NICHT
+  langsamer/schwebend – sonst sieht's aus wie in der Luft). `flieger` = Lufttiere (`FLIEGER`, je mit
+  `typ`: 'w'=Schmetterling/Fee horizontaler Flügelschlag, 's'=Vogel/Biene), selten (~14–28 s), fliegen
+  nach rechts-oben und werden in `fliegerZeichnen` **gespiegelt** (`scale(-…,…)`) → Kopf voraus in
+  Flugrichtung; 's'-Typen nur vertikal pulsieren (sonst staucht der horizontale Schlag sie zum „Kopf").
+  Anzahl bewusst gering (User-Wunsch).
 
 ### Design (alle Spiele, seit 2026-06-13)
 Modernes Kinder-Browsergame-Layout statt 90er-Look: weiche Pastell-Landschaft (driftende Wolken,
