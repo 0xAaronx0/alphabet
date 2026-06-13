@@ -577,7 +577,7 @@ function fangen(b) {
             clipAnsage('super_jetzt_kommen_woerter', 'Super! Jetzt suchen wir Wörter!', 0.9, 1.4);
             return;
         }
-        superSprechen();
+        if (punkte <= 3) superSprechen();      // „Super" nur bei den ersten drei Buchstaben
         naechstesZiel();
         zielMarkieren();
         ansageTimer = 1;
@@ -587,12 +587,12 @@ function fangen(b) {
     // Level 2: gefangenen Buchstaben ans Wort anhängen
     gebaut += ziel;
     const wort = WOERTER[wortIndex].wort;
-    superSprechen();
     if (gebaut.length >= wort.length) {        // Wort fertig (bleibt im Bild stehen)!
+        superSprechen();                       // „Super" nur, wenn ein ganzes Wort fertig ist
         letzterTreffer = '';                   // Flash zeigt nur „SUPER!", das Wort steht oben links
         wortFertigPending = true;              // nach dem Jubel kommt das nächste Wort
     } else {
-        letzterTreffer = ziel;
+        letzterTreffer = ziel;                 // einzelner Buchstabe: kein „Super"
         naechstesZiel();
         zielMarkieren();
         ansageTimer = 1;

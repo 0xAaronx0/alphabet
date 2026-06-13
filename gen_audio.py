@@ -2,9 +2,14 @@ import asyncio, os, sys
 import edge_tts
 
 VOICE = "de-DE-AmalaNeural"
-# Amala spricht das „L" undeutlich (klingt wie „Ja") → für L die klarere Katja-Stimme.
-# (per-Buchstabe-Override, von Whisper-Vergleich über mehrere Stimmen bestätigt)
-VOICE_OVERRIDE = { "l": "de-DE-KatjaNeural" }
+# Manche Buchstaben klingen mit Amala unklar → klarere Stimme pro Buchstabe.
+# (per Whisper-Vergleich über mehrere Stimmen ermittelt)
+#  L: Amala klingt wie „Ja" → Katja sagt klar „El".
+#  U: Amala klingt wie „O" bzw. „o-u" → Seraphina sagt klar „U".
+VOICE_OVERRIDE = {
+    "l": "de-DE-KatjaNeural",
+    "u": "de-DE-SeraphinaMultilingualNeural",
+}
 RATE = "-12%"
 OUT = "audio"
 
@@ -18,7 +23,7 @@ BUCHSTABEN_NAMEN = {
     "m": "Emm", "n": "Enn", "o": "Oh",  "p": "Peh", "q": "Kuh", "r": "Err",
     # "Ix" wuerde als roemische Zahl IX ("neun") gelesen — deshalb "Iks";
     # "Jott" wird teils als "Tschüss/Tschööt" gelesen → "Jot" (klar als "Jot")
-    "s": "Ess", "t": "Teh", "u": "Uu",  "v": "Fau", "w": "Weh", "x": "Iks",
+    "s": "Ess", "t": "Teh", "u": "U",   "v": "Fau", "w": "Weh", "x": "Iks",
     "y": "Ypsilon", "z": "Zett",
 }
 
