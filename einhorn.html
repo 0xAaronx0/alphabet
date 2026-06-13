@@ -319,8 +319,10 @@ let letzterTreffer = '';
 let spawnTimer     = 0;
 let ansageTimer    = 0;   // bei 0 wird das Ziel (erneut) angesagt
 let weltX          = 0;   // Scroll-Offset (läuft auf)
-let szene          = [];  // Midground-Deko (Bäume, Schloss …) – langsamer als das Einhorn
-let szeneTimer     = 0;
+let midDeko        = [];  // Midground: Bäume/Tiere am Boden, langsamer als das Einhorn
+let midTimer       = 0;
+let hillDeko       = [];  // auf den Hügeln (Schloss/Baum/Regenbogen), Hügel-Tempo
+let hillTimer      = 0;
 let flieger        = [];  // Lufttiere (Schmetterling, Fee …) – eigener Flug
 let fliegerTimer   = 0;
 let level          = 1;   // 1 = einzelne Buchstaben, 2 = Wörter
@@ -404,7 +406,8 @@ function spielStart() {
     flashTimer = 0;
     spawnTimer = 14;
     weltX      = 0;
-    szeneInit();
+    midInit();
+    hillInit();
     flieger = [];
     fliegerTimer = 220 + Math.floor(Math.random() * 200);
     schlangeNeuFuellen();
@@ -553,8 +556,10 @@ function update() {
     spieler.blink = (spieler.blink + 1) % 200;
     if (spieler.freudeT > 0) spieler.freudeT--;
 
-    szeneSpawnen();
-    szeneBewegen();
+    hillSpawnen();
+    hillBewegen();
+    midSpawnen();
+    midBewegen();
     fliegerSpawnen();
     fliegerBewegen();
     blasenSpawnen();
@@ -708,7 +713,11 @@ function huegelReihe(offset, baseY, w, h, farbe, period) {
     }
 }
 
-function hintergrundZeichnen() {
+// Geschwindigkeits-Faktoren der Hügel (jetzt insgesamt etwas langsamer)
+const HUEGEL_FERN_F = 0.18;
+const HUEGEL_NAH_F  = 0.35;
+
+function himmelUndHuegelZeichnen() {
     // Traumhimmel
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0,    '#b9a7ee');
@@ -727,17 +736,18 @@ function hintergrundZeichnen() {
         wolkeZeichnen(w.x, w.y, w.g, w.a);
     }
 
-    // Parallax-Hügel
-    huegelReihe(weltX * 0.25, GROUND + 46, 150, 70, '#caa9ea', 300);
-    huegelReihe(weltX * 0.5,  GROUND + 30, 120, 92, '#9ad7a3', 230);
+    // Parallax-Hügel (langsam)
+    huegelReihe(weltX * HUEGEL_FERN_F, GROUND + 46, 150, 70, '#caa9ea', 300);
+    huegelReihe(weltX * HUEGEL_NAH_F,  GROUND + 30, 120, 92, '#9ad7a3', 230);
+}
 
-    // Boden
+function bodenZeichnen() {
     const bg = ctx.createLinearGradient(0, GROUND, 0, H);
     bg.addColorStop(0, '#8fd47f'); bg.addColorStop(1, '#5fac63');
     ctx.fillStyle = bg; ctx.fillRect(0, GROUND, W, H - GROUND);
     ctx.fillStyle = '#7cc06e'; ctx.fillRect(0, GROUND, W, 6);
 
-    // Lauf-Streifen auf dem Boden
+    // Lauf-Streifen auf dem Boden (Vordergrund-Tempo)
     ctx.fillStyle = 'rgba(255,255,255,0.10)';
     const sw = 80, off = weltX % sw;
     for (let x = -off; x < W + sw; x += sw) {
@@ -747,6 +757,9 @@ function hintergrundZeichnen() {
         ctx.closePath(); ctx.fill();
     }
 }
+
+// Für die statischen Screens (Start/Übergang/Sieg): kompletter Hintergrund
+function hintergrundZeichnen() { himmelUndHuegelZeichnen(); bodenZeichnen(); }
 
 function wolkeZeichnen(x, y, groesse, deckkraft) {
     ctx.save();
@@ -763,9 +776,10 @@ function wolkeZeichnen(x, y, groesse, deckkraft) {
     ctx.restore();
 }
 
-// ── Hintergrund-Deko: Bodendeko (eine Ebene vor den Hügeln) + Lufttiere ────
-const SZENE_PFLANZE = ['🌳','🌲','🌳','🌲','🍄','🌸','🌻','🪨','🌷','🌵','🪻','🌿'];
-const SZENE_SELTEN  = ['🏰','🦌','🐰','🦕','🦖','🐿️','🦊','🌈','🦔','🐢','🐑','⛲'];
+// ── Hintergrund-Deko: 3 Ebenen — Mid (am Boden) · Hügel · Lufttiere ────────
+const MID_PFLANZE = ['🌳','🌲','🌳','🌲','🍄','🌸','🌻','🪨','🌷','🌵','🪻','🌿'];
+const MID_TIERE   = ['🐰','🦌','🐿️','🦊','🐢','🦔','🐑','🐞','🐥'];
+const HILL_DEKO   = ['🏰','🌳','🌈','🌲','⛲','🏰'];   // auf den Hügeln (selten)
 // typ 'w' = Flügel seitlich (horizontaler Schlag), 's' = Seitenansicht (ganzer Körper)
 const FLIEGER = [
     { em: '🦋', typ: 'w' },   // Schmetterling
@@ -773,38 +787,59 @@ const FLIEGER = [
     { em: '🦜', typ: 's' },   // ganzer Vogel
     { em: '🐝', typ: 's' },   // Biene
 ];
-const SZENE_V       = WELT_V;               // gleiche Ebene/Tempo wie der Boden (vor den Hügeln)
-const DEKO_ALPHA    = 0.6;                  // leicht durchscheinend
+const MID_V        = WELT_V * 0.6;          // langsamer als Einhorn, schneller als Hügel
+const HILL_DEKO_V  = WELT_V * HUEGEL_NAH_F; // exakt Tempo der nahen Hügel
+const DEKO_ALPHA   = 0.9;                   // deutlich sichtbar, nur leicht durchscheinend
+const zufEm = a => a[Math.floor(Math.random() * a.length)];
 
-function szeneItemErzeugen(x) {
-    const selten = Math.random() < 0.22;
-    const em = selten
-        ? SZENE_SELTEN[Math.floor(Math.random() * SZENE_SELTEN.length)]
-        : SZENE_PFLANZE[Math.floor(Math.random() * SZENE_PFLANZE.length)];
-    szene.push({ em, x, size: 36 + Math.random() * 26 });
+// Midground: Bäume/Tiere am Boden (Horizont), eigene Ebene vor den Hügeln
+function midItem(x) {
+    const em = Math.random() < 0.28 ? zufEm(MID_TIERE) : zufEm(MID_PFLANZE);
+    midDeko.push({ em, x, size: 34 + Math.random() * 24 });
 }
-function szeneInit() {
-    szene = [];
-    for (let x = 140; x < W + 120; x += 320 + Math.random() * 260) szeneItemErzeugen(x);
-    szeneTimer = 140 + Math.floor(Math.random() * 130);
+function midInit() {
+    midDeko = [];
+    for (let x = 120; x < W + 120; x += 230 + Math.random() * 180) midItem(x);
+    midTimer = 120 + Math.floor(Math.random() * 110);
 }
-function szeneSpawnen() {
-    if (--szeneTimer > 0) return;
-    szeneTimer = 340 + Math.floor(Math.random() * 300);   // ~60% weniger als zuvor
-    szeneItemErzeugen(W + 90);
+function midSpawnen() {
+    if (--midTimer > 0) return;
+    midTimer = 210 + Math.floor(Math.random() * 170);
+    midItem(W + 90);
 }
-function szeneBewegen() {
-    for (const sc of szene) sc.x -= SZENE_V;
-    szene = szene.filter(sc => sc.x > -100);
+function midBewegen() {
+    for (const d of midDeko) d.x -= MID_V;
+    midDeko = midDeko.filter(d => d.x > -100);
 }
-function szeneZeichnen() {
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
+function midZeichnen() {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
     ctx.globalAlpha = DEKO_ALPHA;
-    for (const sc of szene) {
-        ctx.font = sc.size + 'px ' + SCHRIFT;
-        ctx.fillText(sc.em, sc.x, GROUND + 6);   // sitzt direkt auf dem Boden
-    }
+    for (const d of midDeko) { ctx.font = d.size + 'px ' + SCHRIFT; ctx.fillText(d.em, d.x, GROUND + 4); }
+    ctx.globalAlpha = 1;
+}
+
+// Hügel-Deko: sitzt auf dem grünen Hügelkamm, bewegt sich mit den Hügeln
+function hillItem(x) {
+    hillDeko.push({ em: zufEm(HILL_DEKO), x, y: GROUND - 46 - Math.random() * 12, size: 34 + Math.random() * 16 });
+}
+function hillInit() {
+    hillDeko = [];
+    for (let x = 220; x < W + 140; x += 420 + Math.random() * 280) hillItem(x);
+    hillTimer = 300 + Math.floor(Math.random() * 280);
+}
+function hillSpawnen() {
+    if (--hillTimer > 0) return;
+    hillTimer = 520 + Math.floor(Math.random() * 420);
+    hillItem(W + 100);
+}
+function hillBewegen() {
+    for (const d of hillDeko) d.x -= HILL_DEKO_V;
+    hillDeko = hillDeko.filter(d => d.x > -110);
+}
+function hillZeichnen() {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.globalAlpha = DEKO_ALPHA;
+    for (const d of hillDeko) { ctx.font = d.size + 'px ' + SCHRIFT; ctx.fillText(d.em, d.x, d.y); }
     ctx.globalAlpha = 1;
 }
 
@@ -1260,9 +1295,11 @@ function zeichnen() {
     if (zustand === 'start')         { startbildschirmZeichnen(); return; }
     if (zustand === 'gewonnen')      { gewonnenZeichnen();        return; }
     if (zustand === 'levelzwischen') { levelZwischenZeichnen();   return; }
-    hintergrundZeichnen();
-    szeneZeichnen();
-    fliegerZeichnen();
+    himmelUndHuegelZeichnen();
+    hillZeichnen();          // auf den Hügeln (Hügel-Tempo)
+    bodenZeichnen();
+    midZeichnen();           // am Boden, eigene Ebene (0.6×)
+    fliegerZeichnen();       // Lufttiere
     blasenZeichnen();
     spielerZeichnen();
     partikelZeichnen();
