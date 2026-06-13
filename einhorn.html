@@ -713,6 +713,18 @@ function huegelReihe(offset, baseY, w, h, farbe, period) {
     }
 }
 
+// Höhe der NAHEN Hügel-Oberfläche an Position x (damit Deko wirklich auf dem Hügel sitzt).
+// Muss zu den Parametern des nahen huegelReihe-Aufrufs passen (baseY=GROUND+30, ry=92, period=230).
+function huegelObenNah(x) {
+    const period = 230, rx = 120, ry = 92, baseY = GROUND + 30;
+    const off = (((weltX * HUEGEL_NAH_F) % period) + period) % period;
+    // Hump-Zentren wie in huegelReihe: c = k*period - off - period/2
+    const k = Math.round((x + off + period / 2) / period);
+    const cx = k * period - off - period / 2;
+    const dxn = Math.min(1, Math.abs(x - cx) / rx);
+    return baseY - ry * Math.sqrt(1 - dxn * dxn);   // Oberkante des Hügels an x
+}
+
 // Geschwindigkeits-Faktoren der Hügel (jetzt insgesamt etwas langsamer)
 const HUEGEL_FERN_F = 0.18;
 const HUEGEL_NAH_F  = 0.35;
@@ -789,7 +801,7 @@ const FLIEGER = [
 ];
 const MID_V        = WELT_V * 0.6;          // langsamer als Einhorn, schneller als Hügel
 const HILL_DEKO_V  = WELT_V * HUEGEL_NAH_F; // exakt Tempo der nahen Hügel
-const DEKO_ALPHA   = 0.9;                   // deutlich sichtbar, nur leicht durchscheinend
+const DEKO_ALPHA   = 0.92;                  // deutlich sichtbar, nur ganz leicht durchscheinend
 const zufEm = a => a[Math.floor(Math.random() * a.length)];
 
 // Midground: Bäume/Tiere am Boden (Horizont), eigene Ebene vor den Hügeln
@@ -814,13 +826,15 @@ function midBewegen() {
 function midZeichnen() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
     ctx.globalAlpha = DEKO_ALPHA;
+    ctx.shadowColor = 'rgba(20,20,40,0.85)'; ctx.shadowBlur = 3; ctx.shadowOffsetY = 2;
     for (const d of midDeko) { ctx.font = d.size + 'px ' + SCHRIFT; ctx.fillText(d.em, d.x, GROUND + 4); }
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
     ctx.globalAlpha = 1;
 }
 
-// Hügel-Deko: sitzt auf dem grünen Hügelkamm, bewegt sich mit den Hügeln
+// Hügel-Deko: sitzt auf der echten Hügel-Oberfläche, bewegt sich mit den Hügeln
 function hillItem(x) {
-    hillDeko.push({ em: zufEm(HILL_DEKO), x, y: GROUND - 46 - Math.random() * 12, size: 34 + Math.random() * 16 });
+    hillDeko.push({ em: zufEm(HILL_DEKO), x, size: 34 + Math.random() * 16, sink: 6 + Math.random() * 6 });
 }
 function hillInit() {
     hillDeko = [];
@@ -839,7 +853,12 @@ function hillBewegen() {
 function hillZeichnen() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
     ctx.globalAlpha = DEKO_ALPHA;
-    for (const d of hillDeko) { ctx.font = d.size + 'px ' + SCHRIFT; ctx.fillText(d.em, d.x, d.y); }
+    ctx.shadowColor = 'rgba(20,20,40,0.85)'; ctx.shadowBlur = 3; ctx.shadowOffsetY = 2;
+    for (const d of hillDeko) {
+        ctx.font = d.size + 'px ' + SCHRIFT;
+        ctx.fillText(d.em, d.x, huegelObenNah(d.x) + d.sink);   // auf der echten Hügel-Oberfläche
+    }
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
     ctx.globalAlpha = 1;
 }
 
@@ -867,6 +886,7 @@ function fliegerBewegen() {
 function fliegerZeichnen() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.globalAlpha = DEKO_ALPHA;
+    ctx.shadowColor = 'rgba(20,20,40,0.80)'; ctx.shadowBlur = 3; ctx.shadowOffsetY = 1;
     for (const f of flieger) {
         ctx.save();
         ctx.translate(f.x, f.y);
@@ -882,6 +902,7 @@ function fliegerZeichnen() {
         ctx.fillText(f.em, 0, 0);
         ctx.restore();
     }
+    ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
     ctx.textBaseline = 'alphabetic';
 }
