@@ -47,8 +47,9 @@ const UX         = 200;           // feste X-Position des Einhorns
 const WELT_V     = 2.8;           // konstante Lauf-/Scrollgeschwindigkeit
 const GRAV       = 0.62;
 const JUMP_V     = -14.2;
-const BAND_MITTE = GROUND - 250;  // Flughöhe der Buchstabenblasen
-const BAND_STREU = 20;
+const BAND_MITTE = GROUND - 262;  // Flughöhe der Buchstabenblasen (über dem Stand-Horn)
+const BAND_STREU = 22;
+const FANG_R     = BLASE_R + 22;  // großzügiger Fang-Radius (kinderfreundlich)
 let   hornWelt   = { x: UX + 56, y: GROUND - 150 };  // Welt-Position der Hornspitze
 
 // Runde, freundliche Schrift — auf iOS/macOS vorinstalliert, sonst weicher Fallback
@@ -483,7 +484,7 @@ function update() {
         for (const b of blasen) {
             if (b.weg) continue;
             const dx = hornWelt.x - b.x, dy = hornWelt.y - b.y;
-            if (dx * dx + dy * dy <= (BLASE_R + 16) * (BLASE_R + 16)) {
+            if (dx * dx + dy * dy <= FANG_R * FANG_R) {
                 if (b.zeichen === ziel) { fangen(b); break; }
                 else if (b.wackelT === 0) b.wackelT = 18;   // falsche: nur kurz wackeln, keine Strafe
             }
@@ -648,60 +649,79 @@ function wolkeZeichnen(x, y, groesse, deckkraft) {
     ctx.restore();
 }
 
-// ── Einhorn ────────────────────────────────────────────────────────────────
+// ── Einhorn (pferdeartig) ───────────────────────────────────────────────────
 const E = {
-    fell: '#fdf4ff', schatten: '#e9def4',
-    horn: '#ffd35c', hornDunkel: '#eaa92f',
-    auge: '#3a2b52', wange: '#ffb3c7', huf: '#cdb8ec'
+    fell: '#fdf5ff', schatten: '#d9c9ee', bauch: '#f1e9fb',
+    horn: '#ffd86a', hornDunkel: '#e7a52c',
+    auge: '#2e2440', wange: '#ffc0d2', huf: '#b9a3df', nuest: '#b59ad6'
 };
-const MAEHNE = ['#ff7eb6', '#ffae5d', '#ffe06b', '#7fd99a', '#74b9ff', '#bf94ff'];
+const MAEHNE = ['#ff7eb6', '#ff9f5a', '#ffe06b', '#7fd99a', '#5cc8ff', '#b07cff'];
 
-function beinZeichnen(hx, phase, jump) {
-    const swing = jump ? -0.7 : Math.sin(phase) * 0.7;
-    const footX = hx + Math.sin(swing) * 22;
-    const footY = 46 - Math.max(0, Math.cos(swing)) * 4 + (jump ? -10 : 0);
+// Bein mit Knie (zwei Segmente), Galopp-Animation
+function beinZeichnen(hx, hy, phase, jump, farbe) {
+    const sw    = jump ? -0.5 : Math.sin(phase) * 0.5;
+    const kneeX = hx + Math.sin(sw) * 12;
+    const kneeY = hy + 30;
+    const footX = kneeX + Math.sin(sw + 0.25) * 13;
+    const footY = hy + 60 + (jump ? -14 : 0);
     ctx.lineCap = 'round';
-    ctx.strokeStyle = E.fell; ctx.lineWidth = 11;
-    ctx.beginPath(); ctx.moveTo(hx, 8); ctx.lineTo(footX, footY); ctx.stroke();
-    ctx.strokeStyle = E.huf; ctx.lineWidth = 11;
-    ctx.beginPath(); ctx.moveTo(footX, footY - 5); ctx.lineTo(footX, footY); ctx.stroke();
+    ctx.strokeStyle = farbe; ctx.lineWidth = 13;
+    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kneeX, kneeY); ctx.stroke();
+    ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.moveTo(kneeX, kneeY); ctx.lineTo(footX, footY); ctx.stroke();
+    ctx.strokeStyle = E.huf; ctx.lineWidth = 9;
+    ctx.beginPath(); ctx.moveTo(footX, footY - 4); ctx.lineTo(footX, footY + 3); ctx.stroke();
 }
 
 function schweifZeichnen(phase) {
-    const sway = Math.sin(phase * 0.5) * 7;
+    const sway = Math.sin(phase * 0.5) * 8;
     ctx.lineCap = 'round';
     for (let i = 0; i < MAEHNE.length; i++) {
-        ctx.strokeStyle = MAEHNE[i]; ctx.lineWidth = 7;
+        ctx.strokeStyle = MAEHNE[i]; ctx.lineWidth = 6;
         ctx.beginPath();
-        ctx.moveTo(-46, -10 + i * 3);
-        ctx.quadraticCurveTo(-76, 6 + i * 4 + sway, -64 - i * 2, 38 + i * 3 + sway);
+        ctx.moveTo(-52, -8 + i * 2);
+        ctx.quadraticCurveTo(-78, 14 + i * 4 + sway, -70 - i * 3, 58 + i * 4 + sway);
         ctx.stroke();
     }
 }
 
-function maehneZeichnen() {
+// Mähne entlang des Halskamms (Body-Frame): von Poll bis Widerrist
+function maehneZeichnen(sway) {
+    ctx.lineCap = 'round';
     for (let i = 0; i < MAEHNE.length; i++) {
-        ctx.fillStyle = MAEHNE[i];
+        ctx.strokeStyle = MAEHNE[i]; ctx.lineWidth = 7;
         ctx.beginPath();
-        ctx.ellipse(34 - i * 3, -32 + i * 8, 8, 14, -0.5, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.moveTo(58 - i * 1.5, -60);
+        ctx.quadraticCurveTo(44 - i * 2 + sway, -42, 28 - i * 2, -12);
+        ctx.stroke();
     }
 }
 
+// Stirnlocke (Kopf-Frame)
+function forelockZeichnen() {
+    for (let i = 0; i < 3; i++) {
+        ctx.strokeStyle = MAEHNE[i]; ctx.lineWidth = 4; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(4, -13);
+        ctx.quadraticCurveTo(14, -6, 18 + i * 2, 4);
+        ctx.stroke();
+    }
+}
+
+// Spiralhorn (Kopf-Frame), schreibt Welt-Position der Spitze nach hornWelt
 function hornZeichnen() {
     ctx.save();
-    ctx.translate(-2, -20);
-    ctx.rotate(0.12);
-    const grad = ctx.createLinearGradient(0, 4, 0, -42);
+    ctx.translate(8, -14);
+    ctx.rotate(0.18);
+    const grad = ctx.createLinearGradient(0, 6, 0, -42);
     grad.addColorStop(0, E.hornDunkel); grad.addColorStop(1, E.horn);
     ctx.fillStyle = grad;
-    ctx.beginPath(); ctx.moveTo(-6, 4); ctx.lineTo(6, 4); ctx.lineTo(0, -42); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-5, 6); ctx.lineTo(5, 6); ctx.lineTo(0, -42); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = E.hornDunkel; ctx.lineWidth = 1.5;
-    for (let i = 0; i < 4; i++) {
-        const y = 0 - i * 10;
-        ctx.beginPath(); ctx.moveTo(-5 + i, y); ctx.lineTo(5 - i, y - 5); ctx.stroke();
+    for (let i = 0; i < 5; i++) {
+        const y = 2 - i * 9;
+        ctx.beginPath(); ctx.moveTo(-4 + i, y); ctx.lineTo(4 - i, y - 5); ctx.stroke();
     }
-    // Welt-Position der Hornspitze (lokaler Punkt 0,-42) für die Kollision merken
     const m = ctx.getTransform();
     hornWelt = { x: m.c * (-42) + m.e, y: m.d * (-42) + m.f };
     ctx.restore();
@@ -710,56 +730,79 @@ function hornZeichnen() {
 function spielerZeichnen() {
     const feetY = GROUND + spieler.sy;
     const jump  = spieler.sy < -2;
+    const ph    = spieler.beinPhase;
+
     ctx.save();
-    ctx.translate(UX, feetY - 46);     // Körpermitte
-    const tilt = Math.max(-0.14, Math.min(0.05, spieler.vy * 0.006));
-    ctx.rotate(tilt);
+    ctx.translate(UX, feetY - 78);                 // Rumpf-Mitte
+    ctx.rotate(Math.max(-0.12, Math.min(0.05, spieler.vy * 0.006)));
 
-    schweifZeichnen(spieler.beinPhase);
+    // Schweif (hinten)
+    schweifZeichnen(ph);
 
-    // Hinterbeine
-    beinZeichnen(-30, spieler.beinPhase + Math.PI, jump);
-    beinZeichnen(-20, spieler.beinPhase, jump);
+    // Ferne Beine (dunkler = Tiefe)
+    beinZeichnen(-36, 18, ph + Math.PI,        jump, E.schatten);
+    beinZeichnen( 30, 18, ph + Math.PI * 0.5,  jump, E.schatten);
 
-    // Körper
+    // Körper: Rumpf, Hinterhand, Brust, hellerer Bauch
     ctx.fillStyle = E.fell;
-    ctx.beginPath(); ctx.ellipse(-2, 0, 50, 32, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = E.schatten;
-    ctx.beginPath(); ctx.ellipse(-2, 12, 44, 18, 0, 0, Math.PI); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-2, 0, 54, 30, -0.04, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-42, -4, 24, 26, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(36, 2, 20, 24, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = E.bauch;
+    ctx.beginPath(); ctx.ellipse(-2, 14, 46, 14, 0, 0, Math.PI); ctx.fill();
 
-    // Vorderbeine
-    beinZeichnen(20, spieler.beinPhase + Math.PI * 0.5, jump);
-    beinZeichnen(8,  spieler.beinPhase + Math.PI * 1.5, jump);
+    // Nahe Beine (volle Fellfarbe)
+    beinZeichnen(-44, 20, ph,                  jump, E.fell);
+    beinZeichnen( 24, 20, ph + Math.PI * 1.5,  jump, E.fell);
 
-    // Hals + Kopf
+    // Hals
     ctx.fillStyle = E.fell;
     ctx.beginPath();
-    ctx.moveTo(24, -10);
-    ctx.quadraticCurveTo(50, -20, 50, -46);
-    ctx.lineTo(70, -44);
-    ctx.quadraticCurveTo(72, -14, 40, 4);
+    ctx.moveTo(28, -12);
+    ctx.quadraticCurveTo(42, -22, 54, -52);
+    ctx.quadraticCurveTo(60, -64, 70, -60);
+    ctx.quadraticCurveTo(62, -38, 50, -4);
     ctx.closePath(); ctx.fill();
 
+    // Mähne am Hals
+    maehneZeichnen(Math.sin(ph * 0.5) * 3);
+
+    // Kopf (länglicher Pferdekopf)
     ctx.save();
-    ctx.translate(58, -50);          // Kopfmitte
-    maehneZeichnen();
+    ctx.translate(62, -60);
     ctx.fillStyle = E.fell;
-    ctx.beginPath(); ctx.ellipse(0, 0, 24, 20, -0.12, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(16, 9, 13, 10, 0.18, 0, Math.PI * 2); ctx.fill();   // Schnauze
-    ctx.beginPath(); ctx.moveTo(-10, -14); ctx.lineTo(-4, -28); ctx.lineTo(4, -15); ctx.closePath(); ctx.fill();  // Ohr
-    ctx.fillStyle = E.schatten;
-    ctx.beginPath(); ctx.ellipse(23, 11, 2, 2.6, 0, 0, Math.PI * 2); ctx.fill();     // Nüster
-    ctx.fillStyle = E.wange; ctx.globalAlpha = 0.6;
-    ctx.beginPath(); ctx.arc(7, 7, 6, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.moveTo(-6, -12);                         // Poll
+    ctx.quadraticCurveTo(14, -15, 20, -1);       // Stirn → Nasenrücken
+    ctx.quadraticCurveTo(29, 12, 29, 19);        // Nase hinunter
+    ctx.quadraticCurveTo(27, 26, 19, 25);        // Maul
+    ctx.quadraticCurveTo(8, 23, 3, 13);          // Kinn/Kehle
+    ctx.quadraticCurveTo(-8, 4, -6, -12);        // Wange zurück
+    ctx.closePath(); ctx.fill();
+
+    // Ohren
+    ctx.beginPath(); ctx.moveTo(-6, -12); ctx.lineTo(-11, -29); ctx.lineTo(2, -14); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(3, -13);  ctx.lineTo(4, -30);   ctx.lineTo(13, -14); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = E.wange;
+    ctx.beginPath(); ctx.moveTo(-5, -14); ctx.lineTo(-8, -25); ctx.lineTo(0, -15); ctx.closePath(); ctx.fill();
+
+    // Auge
     if (spieler.blink > 190) {
         ctx.strokeStyle = E.auge; ctx.lineWidth = 2; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(3, -3); ctx.lineTo(11, -3); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(4, -2); ctx.lineTo(12, -2); ctx.stroke();
     } else {
         ctx.fillStyle = E.auge;
-        ctx.beginPath(); ctx.arc(8, -3, 4.2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(8, -2, 3.4, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(9.4, -4.4, 1.4, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(9, -3, 1.2, 0, Math.PI * 2); ctx.fill();
     }
+    // Nüster + Wange
+    ctx.fillStyle = E.nuest;
+    ctx.beginPath(); ctx.ellipse(24, 15, 2, 3, 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = E.wange; ctx.globalAlpha = 0.55;
+    ctx.beginPath(); ctx.arc(11, 7, 5, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+
+    forelockZeichnen();
     hornZeichnen();
     ctx.restore();
 

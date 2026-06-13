@@ -47,8 +47,15 @@ Auf dem Server `einhorn.html`. Schlüssel-Details:
   ist fangbar; falsche wackeln nur). `update` läuft vor `zeichnen`, nutzt also `hornWelt` vom Vorframe.
 - **Kein Ketten-Treffer:** Kollision pausiert solange `flashTimer>0` (Jubel ~1 s nach Fang),
   sonst würde ein Sprung mehrere Buchstaben auf einmal fangen.
-- Reichweite hängt an Geometrie: `BAND_MITTE`/`BAND_STREU` (Flughöhe) vs. Stand-Hornhöhe — Stand-Horn
-  muss klar unter dem Band bleiben, sonst Treffer ohne Sprung. Beim Ändern der Einhorn-Größe prüfen!
+- Reichweite hängt an Geometrie: `BAND_MITTE`/`BAND_STREU` (Flughöhe) + `FANG_R` (Fang-Radius)
+  vs. Stand-Hornhöhe. **Invariante:** Stand-Horn muss > `FANG_R` über der untersten Blase liegen,
+  sonst Treffer OHNE Sprung; und der Sprung-Apex muss bis ins Band reichen. **Beim Ändern der
+  Einhorn-Größe** Stand-`hornWelt.y` neu messen (Spiel starten, `hornWelt.y` bei `sy==0` lesen) und
+  `BAND_MITTE` anpassen. Aktuell: Stand-Horn ≈ GROUND−150, `BAND_MITTE`=GROUND−262, `FANG_R`=BLASE_R+22.
+- Das Einhorn ist pferdeartig gezeichnet (`spielerZeichnen`: Rumpf/Hinterhand/Brust-Ellipsen,
+  2-Segment-Beine mit Knie+Galopp, länglicher Kopf, Spiralhorn, Regenbogen-Mähne/Schweif/Stirnlocke).
+  **rAF pausiert im Headless-Preview** → Gameplay deterministisch testen: `update()`+`spielerZeichnen()`
+  pro Frame manuell in einer Schleife aufrufen (hält `hornWelt` aktuell), nicht per Auto-Klick/Timer.
 - `funkeln()` (magischer Klang) statt `bellen()` (Hund) beim Fangen.
 
 ### Design (alle Spiele, seit 2026-06-13)
