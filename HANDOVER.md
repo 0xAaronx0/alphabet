@@ -39,8 +39,22 @@ Im Stil von „Robot Unicorn Attack": ein Einhorn rennt mit konstanter Geschwind
 Fantasy-Welt (Parallax: Regenbogen, Sterne, driftende Wolken, Parallax-Hügel, Lauf-Streifen am
 Boden). Oben fliegen Buchstabenblasen von rechts herein. **Pfeil hoch / Leertaste / Tippen = Hüpfen**
 (Doppelsprung erlaubt); das Einhorn zerplatzt mit dem **Horn** die Zielblase. Angesagt wird **nur der
-Buchstabe** (z. B. „Zett") über `audio/nur_<x>.mp3` (`buchstabeAnsagen`→`clipAnsage`). 15 Buchstaben → gewonnen.
-Auf dem Server `einhorn.html`. Schlüssel-Details:
+Buchstabe** (z. B. „Zett") über `audio/nur_<x>.mp3` (`buchstabeAnsagen`→`clipAnsage`).
+Auf dem Server `einhorn.html`.
+
+**Zwei Level (seit 2026-06-14):**
+- **Level 1** (`level===1`): 15 einzelne Buchstaben fangen → `zustand='levelzwischen'` (Übergangs-Screen)
+  → `level2Starten()`.
+- **Level 2** (`level===2`): 4 kurze Wörter buchstabieren (`WOERTER` = HAUS/MAUS/WURM/BAUM mit Emoji-Bild).
+  `naechstesZiel()` liefert den nächsten fehlenden Buchstaben (`WOERTER[wortIndex].wort[gebaut.length]`);
+  gefangene Buchstaben sammeln sich in `gebaut` und werden oben links als Wort-Baukasten gezeigt
+  (Bild + Buchstaben + `_`-Slots, `anzeigeZeichnen`). Wort fertig → Wort-Clip `wort_<x>.mp3`, nächstes
+  Wort; nach 4 Wörtern → `gewonnen`.
+- **Goldener Glow (`glowAktiv()`):** Level 1 nur die ersten 6 Treffer (`punkte<6`); Level 2 nur beim
+  ersten Wort (`wortIndex===0`). Danach muss das Kind die richtige Blase selbst finden. `glowAktiv()`
+  steuert `leuchtet` in `blaseErzeugen` UND `zielMarkieren`.
+
+Schlüssel-Details:
 - Auf den Boden gebaut wie die anderen, aber Spieler hat `sy/vy` (Sprung), Welt scrollt über `weltX`.
 - **Horn-Kollision:** `spielerZeichnen()` schreibt die Welt-Position der Hornspitze via
   `ctx.getTransform()` nach `hornWelt`; `update()` prüft Abstand `hornWelt`↔Blase (nur Zielblase
@@ -52,9 +66,11 @@ Auf dem Server `einhorn.html`. Schlüssel-Details:
   sonst Treffer OHNE Sprung; und der Sprung-Apex muss bis ins Band reichen. **Beim Ändern der
   Einhorn-Größe** Stand-`hornWelt.y` neu messen (Spiel starten, `hornWelt.y` bei `sy==0` lesen) und
   `BAND_MITTE` anpassen. Aktuell: Stand-Horn ≈ GROUND−150, `BAND_MITTE`=GROUND−262, `FANG_R`=BLASE_R+22.
-- Das Einhorn ist pferdeartig gezeichnet (`spielerZeichnen`: Rumpf/Hinterhand/Brust-Ellipsen,
-  2-Segment-Beine mit Knie+Galopp, länglicher Kopf, Spiralhorn, Regenbogen-Mähne/Schweif/Stirnlocke).
-  **rAF pausiert im Headless-Preview** → Gameplay deterministisch testen: `update()`+`spielerZeichnen()`
+- Das Einhorn ist im **niedlichen Chibi-Stil** gezeichnet (`spielerZeichnen`: großer Kopf, großes
+  glänzendes Auge, rosa Wange, fluffige Regenbogen-Mähne+Schweif, Spiralhorn, Stummelbeine mit
+  rosa Hufen). **Sticker-Umriss-Trick:** `silhouette()` zeichnet alle weißen Teile zuerst dunkel
+  (etwas größer) und dann weiß → sauberer Cartoon-Umriss ohne innere Linien.
+- **rAF pausiert im Headless-Preview** → Gameplay deterministisch testen: `update()`+`spielerZeichnen()`
   pro Frame manuell in einer Schleife aufrufen (hält `hornWelt` aktuell), nicht per Auto-Klick/Timer.
 - `funkeln()` (magischer Klang) statt `bellen()` (Hund) beim Fangen.
 
@@ -142,8 +158,14 @@ Setup (gleiches Muster wie `cruise-map`/`nabla-dashboard` auf dem KiteScout-VPS)
 - Deshalb umgestellt auf **vorab erzeugte MP3-Clips** (Microsoft `de-DE-AmalaNeural` via edge-tts, Rate −12%; vorher Katja — User fand sie unangenehm):
   - `audio/` — 145 Clips (finde_X, hoppla_such_X, nein_such_X für a–z + 0–20, plus 4 Festsätze)
   - `gen_audio.py` erzeugt sie neu: `uv run --with edge-tts python gen_audio.py`
-  - **Buchstaben werden ausgeschrieben** ("Beh", "Zeh", "Iks"…) — einzelne Großbuchstaben las die
+  - **Buchstaben werden ausgeschrieben** in `BUCHSTABEN_NAMEN` — einzelne Großbuchstaben las die
     TTS teils englisch ("find i"); ACHTUNG: "Ix" wird als römische Zahl IX ("neun") gelesen → "Iks"!
+    Aussprache 2026-06-14 geschärft: Vokale verlängert (U="Uuh" sonst wie O, A="Aah"), Konsonanten
+    verdoppelt (L="Ell", M/N/R/S="Emm/Enn/Err/Ess"). Beim Ändern Clips löschen + neu erzeugen.
+  - **Level-2-Clips:** `wort_<haus|maus|wurm|baum>.mp3` (Wort vorlesen) + `super_jetzt_kommen_woerter`
+    + `wahnsinn_du_hast_alle_woerter_geschafft`. Insgesamt 178 Clips.
+  - **Hinweis:** Aussprache kann nur der Mensch final beurteilen (Whisper hört Einzel-Clips falsch) —
+    bei Beschwerden gezielt die `BUCHSTABEN_NAMEN`-Schreibweise des Buchstabens anpassen.
   - Sprach-Check: `uv run --with faster-whisper python check_audio.py` (Whisper-Transkription;
     Sprach-Erkennung bei 2-s-Clips notorisch unzuverlässig — im Zweifel mit language="de" forcieren
     und Transkript lesen; identische md5-Hashes zweier Clips = falsch normalisierter Text)

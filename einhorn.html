@@ -319,6 +319,17 @@ let letzterTreffer = '';
 let spawnTimer     = 0;
 let ansageTimer    = 0;   // bei 0 wird das Ziel (erneut) angesagt
 let weltX          = 0;   // Scroll-Offset (läuft auf)
+let level          = 1;   // 1 = einzelne Buchstaben, 2 = Wörter
+let wortIndex      = 0;   // aktuelles Wort in Level 2
+let gebaut         = '';  // bisher gefangene Buchstaben des Wortes
+
+// Level 2: kurze Wörter mit Bild (Emoji)
+const WOERTER = [
+    { wort: 'HAUS', bild: '🏠' },
+    { wort: 'MAUS', bild: '🐭' },
+    { wort: 'WURM', bild: '🪱' },
+    { wort: 'BAUM', bild: '🌳' },
+];
 
 function mischen(a) {
     const b = [...a];
@@ -336,8 +347,20 @@ function naechsterBuchstabe() {
     return buchstabenSchlange.pop();
 }
 
+// Goldener Glow: Level 1 nur die ersten 6 Treffer; Level 2 nur beim ersten Wort.
+function glowAktiv() {
+    return level === 1 ? punkte < 6 : wortIndex === 0;
+}
+
 function zielMarkieren() {
-    for (const b of blasen) { if (!b.weg) { b.istZiel = b.zeichen === ziel; b.leuchtet = b.istZiel; } }
+    const glow = glowAktiv();
+    for (const b of blasen) { if (!b.weg) { b.istZiel = b.zeichen === ziel; b.leuchtet = b.istZiel && glow; } }
+}
+
+// Nächstes Ziel: Level 1 = nächster Buchstabe der Schlange;
+// Level 2 = nächster fehlender Buchstabe des aktuellen Wortes.
+function naechstesZiel() {
+    ziel = level === 1 ? naechsterBuchstabe() : WOERTER[wortIndex].wort[gebaut.length];
 }
 
 function spielerErstellen() {
@@ -345,6 +368,9 @@ function spielerErstellen() {
 }
 
 function spielStart() {
+    level      = 1;
+    wortIndex  = 0;
+    gebaut     = '';
     punkte     = 0;
     blasen     = [];
     partikel   = [];
@@ -353,12 +379,27 @@ function spielStart() {
     spawnTimer = 14;
     weltX      = 0;
     schlangeNeuFuellen();
-    ziel = naechsterBuchstabe();
+    naechstesZiel();
     // Ansage synchron VOR musikStarten (Safari: speak()/Audio erst nach AudioContext blockiert)
     buchstabeAnsagen(ziel);
     ansageTimer = 420;
     zustand = 'spielen';
     musikStarten();
+}
+
+function level2Starten() {
+    level      = 2;
+    wortIndex  = 0;
+    gebaut     = '';
+    blasen     = [];
+    partikel   = [];
+    spieler    = spielerErstellen();
+    flashTimer = 0;
+    spawnTimer = 14;
+    naechstesZiel();
+    buchstabeAnsagen(ziel);   // Audio ist seit Level 1 entsperrt
+    ansageTimer = 420;
+    zustand = 'spielen';
 }
 
 // ── Buchstabenblasen: fliegen von rechts herein ────────────────────────────
@@ -372,7 +413,7 @@ function blaseErzeugen(zeichen) {
         bobT     : Math.random() * Math.PI * 2,
         istZiel  : zeichen === ziel,
         farbe    : farbeFuer(zeichen),
-        leuchtet : zeichen === ziel,
+        leuchtet : zeichen === ziel && glowAktiv(),
         glowT    : 0,
         wackelT  : 0,
         weg      : false
@@ -500,27 +541,56 @@ function update() {
 
 function fangen(b) {
     b.weg = true;
-    letzterTreffer = ziel;
-    punkte++;
     explosion(b.x, b.y, b.farbe, 26);
     ploppen();
     funkeln();
     spieler.freudeT = 28;
     flashTimer = 60;
-    if (punkte >= ZIEL_PRO_LEVEL) {
-        zustand = 'gewonnen';
-        sprechen('Wahnsinn! Du hast alle Buchstaben gefangen!', 0.9, 1.55);
+
+    if (level === 1) {
+        letzterTreffer = ziel;
+        punkte++;
+        if (punkte >= ZIEL_PRO_LEVEL) {        // Level 1 fertig → Übergang zu Wörtern
+            zustand = 'levelzwischen';
+            clipAnsage('super_jetzt_kommen_woerter', 'Super! Jetzt suchen wir Wörter!', 0.9, 1.4);
+            return;
+        }
+        superSprechen();
+        naechstesZiel();
+        zielMarkieren();
+        ansageTimer = 1;
         return;
     }
-    superSprechen();
-    ziel = naechsterBuchstabe();   // neues Ziel; Ansage kommt direkt nach dem Jubel
-    zielMarkieren();
-    ansageTimer = 1;               // sobald flashTimer 0 ist, wird angesagt
+
+    // Level 2: gefangenen Buchstaben ans Wort anhängen
+    gebaut += ziel;
+    const wort = WOERTER[wortIndex].wort;
+    if (gebaut.length >= wort.length) {        // Wort fertig!
+        letzterTreffer = wort;
+        wortIndex++;
+        gebaut = '';
+        if (wortIndex >= WOERTER.length) {     // alle Wörter geschafft
+            zustand = 'gewonnen';
+            clipAnsage('wahnsinn_du_hast_alle_woerter_geschafft', 'Wahnsinn! Du hast alle Wörter geschafft!', 0.9, 1.5);
+            return;
+        }
+        clipAnsage('wort_' + audioSchluessel(wort), wort, 0.92, 1.3);  // fertiges Wort vorlesen
+        naechstesZiel();
+        zielMarkieren();
+        ansageTimer = 80;                      // kurz warten – das Wort wird vorgelesen
+    } else {
+        letzterTreffer = ziel;
+        superSprechen();
+        naechstesZiel();
+        zielMarkieren();
+        ansageTimer = 1;
+    }
 }
 
 // ── Eingabe: Pfeil hoch / Leertaste / Tippen = Hüpfen ──────────────────────
 function huepfen() {
     if (zustand === 'start' || zustand === 'gewonnen') { spielStart(); return; }
+    if (zustand === 'levelzwischen') { level2Starten(); return; }
     if (zustand !== 'spielen') return;
     if (spieler.aufBoden) {
         spieler.vy = JUMP_V; spieler.aufBoden = false; spieler.sprungUebrig = 1;
@@ -649,82 +719,122 @@ function wolkeZeichnen(x, y, groesse, deckkraft) {
     ctx.restore();
 }
 
-// ── Einhorn (pferdeartig) ───────────────────────────────────────────────────
+// ── Einhorn (niedlicher Chibi-Stil) ─────────────────────────────────────────
 const E = {
-    fell: '#fdf5ff', schatten: '#d9c9ee', bauch: '#f1e9fb',
+    fell: '#ffffff', outline: '#5b4a73',
+    hufHell: '#ffc7e6', huf: '#ff86c0',
+    auge: '#3a2c5a', wange: '#ffaccb', maul: '#b8527e',
     horn: '#ffd86a', hornDunkel: '#e7a52c',
-    auge: '#2e2440', wange: '#ffc0d2', huf: '#b9a3df', nuest: '#b59ad6'
+    bauch: '#f1ebff', ohrInnen: '#ffc7e6'
 };
-const MAEHNE = ['#ff7eb6', '#ff9f5a', '#ffe06b', '#7fd99a', '#5cc8ff', '#b07cff'];
+// Regenbogen: pink, gelb, blau, grün, lila
+const MAEHNE = ['#ff7eb6', '#ffd24d', '#5cc8ff', '#7fe0a0', '#b07cff'];
 
-// Bein mit Knie (zwei Segmente), Galopp-Animation
-function beinZeichnen(hx, hy, phase, jump, farbe) {
-    const sw    = jump ? -0.5 : Math.sin(phase) * 0.5;
-    const kneeX = hx + Math.sin(sw) * 12;
-    const kneeY = hy + 30;
-    const footX = kneeX + Math.sin(sw + 0.25) * 13;
-    const footY = hy + 60 + (jump ? -14 : 0);
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = farbe; ctx.lineWidth = 13;
-    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kneeX, kneeY); ctx.stroke();
-    ctx.lineWidth = 8;
-    ctx.beginPath(); ctx.moveTo(kneeX, kneeY); ctx.lineTo(footX, footY); ctx.stroke();
-    ctx.strokeStyle = E.huf; ctx.lineWidth = 9;
-    ctx.beginPath(); ctx.moveTo(footX, footY - 4); ctx.lineTo(footX, footY + 3); ctx.stroke();
+// Spitze Mähnen-/Schweif-Strähne (zwei Bögen, gefüllt)
+function locke(x1, y1, c1x, c1y, x2, y2, c2x, c2y, farbe) {
+    ctx.fillStyle = farbe;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.quadraticCurveTo(c1x, c1y, x2, y2);
+    ctx.quadraticCurveTo(c2x, c2y, x1, y1);
+    ctx.fill();
+}
+
+// Komplette weiße Silhouette (Beine + Körper + Kopf + Ohr) in einer Farbe/Größe
+// → einmal dunkel (etwas größer) = Cartoon-Umriss, einmal weiß = Füllung.
+function silhouette(beine, farbe, d) {
+    ctx.fillStyle = farbe; ctx.strokeStyle = farbe; ctx.lineCap = 'round';
+    for (const L of beine) {
+        ctx.lineWidth = 15 + d * 2;
+        ctx.beginPath(); ctx.moveTo(L.hx, L.hy); ctx.lineTo(L.fx, L.fy); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.ellipse(-4, 2, 46 + d, 34 + d, 0, 0, Math.PI * 2); ctx.fill();   // Körper
+    ctx.beginPath(); ctx.ellipse(44, -32, 30 + d, 28 + d, 0, 0, Math.PI * 2); ctx.fill(); // Kopf
+    ctx.beginPath(); ctx.moveTo(30, -54); ctx.lineTo(26, -76 - d); ctx.lineTo(46, -56); ctx.closePath(); ctx.fill(); // Ohr
+}
+
+function hufZeichnen(fx, fy) {
+    ctx.fillStyle = E.outline;
+    ctx.beginPath(); ctx.ellipse(fx, fy + 1, 9.5, 8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = E.huf;
+    ctx.beginPath(); ctx.ellipse(fx, fy, 7, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = E.hufHell;
+    ctx.beginPath(); ctx.ellipse(fx - 1, fy - 1.5, 3, 2.4, 0, 0, Math.PI * 2); ctx.fill();
 }
 
 function schweifZeichnen(phase) {
-    const sway = Math.sin(phase * 0.5) * 8;
-    ctx.lineCap = 'round';
+    const sway = Math.sin(phase * 0.5) * 7;
     for (let i = 0; i < MAEHNE.length; i++) {
-        ctx.strokeStyle = MAEHNE[i]; ctx.lineWidth = 6;
-        ctx.beginPath();
-        ctx.moveTo(-52, -8 + i * 2);
-        ctx.quadraticCurveTo(-78, 14 + i * 4 + sway, -70 - i * 3, 58 + i * 4 + sway);
-        ctx.stroke();
+        const y0 = -8 + i * 5;
+        locke(-42, y0,
+              -82 - i * 3, 2 + i * 6 + sway,
+              -74 - i * 4, 34 + i * 7 + sway,
+              -56, y0 + 14, MAEHNE[i]);
     }
 }
 
-// Mähne entlang des Halskamms (Body-Frame): von Poll bis Widerrist
-function maehneZeichnen(sway) {
-    ctx.lineCap = 'round';
-    for (let i = 0; i < MAEHNE.length; i++) {
-        ctx.strokeStyle = MAEHNE[i]; ctx.lineWidth = 7;
-        ctx.beginPath();
-        ctx.moveTo(58 - i * 1.5, -60);
-        ctx.quadraticCurveTo(44 - i * 2 + sway, -42, 28 - i * 2, -12);
-        ctx.stroke();
-    }
+function maehneZeichnen(phase) {
+    const sway = Math.sin(phase * 0.5) * 2;
+    // Hintere Mähne: fluffig vom Kopf-Oberteil den Nacken hinunter (breite Strähnen)
+    const lagen = [
+        [36, -54,  2 + sway, -50, -18, -4, 26, -44, MAEHNE[0]],
+        [32, -50, -2 + sway, -40, -16,  6, 22, -38, MAEHNE[1]],
+        [28, -44, -6 + sway, -30, -12, 14, 18, -30, MAEHNE[2]],
+        [24, -38, -8 + sway, -22,  -6, 20, 14, -24, MAEHNE[3]],
+    ];
+    for (const L of lagen) locke(...L);
+    // kleiner Stirnschopf oben am Kopf (vor dem Horn, bleibt über dem Auge)
+    locke(40, -58, 50, -58, 48, -46, 40, -50, MAEHNE[0]);
+    locke(38, -58, 46, -56, 44, -48, 38, -52, MAEHNE[1]);
 }
 
-// Stirnlocke (Kopf-Frame)
-function forelockZeichnen() {
-    for (let i = 0; i < 3; i++) {
-        ctx.strokeStyle = MAEHNE[i]; ctx.lineWidth = 4; ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(4, -13);
-        ctx.quadraticCurveTo(14, -6, 18 + i * 2, 4);
-        ctx.stroke();
-    }
-}
-
-// Spiralhorn (Kopf-Frame), schreibt Welt-Position der Spitze nach hornWelt
 function hornZeichnen() {
     ctx.save();
-    ctx.translate(8, -14);
-    ctx.rotate(0.18);
-    const grad = ctx.createLinearGradient(0, 6, 0, -42);
+    ctx.translate(46, -56);
+    ctx.rotate(0.16);
+    const grad = ctx.createLinearGradient(0, 6, 0, -38);
     grad.addColorStop(0, E.hornDunkel); grad.addColorStop(1, E.horn);
+    // Umriss
+    ctx.fillStyle = E.outline;
+    ctx.beginPath(); ctx.moveTo(-7, 7); ctx.lineTo(7, 7); ctx.lineTo(0, -40); ctx.closePath(); ctx.fill();
     ctx.fillStyle = grad;
-    ctx.beginPath(); ctx.moveTo(-5, 6); ctx.lineTo(5, 6); ctx.lineTo(0, -42); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = E.hornDunkel; ctx.lineWidth = 1.5;
-    for (let i = 0; i < 5; i++) {
+    ctx.beginPath(); ctx.moveTo(-5, 6); ctx.lineTo(5, 6); ctx.lineTo(0, -37); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = E.hornDunkel; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+    for (let i = 0; i < 4; i++) {
         const y = 2 - i * 9;
         ctx.beginPath(); ctx.moveTo(-4 + i, y); ctx.lineTo(4 - i, y - 5); ctx.stroke();
     }
     const m = ctx.getTransform();
-    hornWelt = { x: m.c * (-42) + m.e, y: m.d * (-42) + m.f };
+    hornWelt = { x: m.c * (-38) + m.e, y: m.d * (-38) + m.f };
     ctx.restore();
+}
+
+function kopfDetails() {
+    // Wange
+    ctx.fillStyle = E.wange; ctx.globalAlpha = 0.75;
+    ctx.beginPath(); ctx.ellipse(40, -20, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Auge (groß, glänzend) oder Zwinkern
+    if (spieler.blink > 190) {
+        ctx.strokeStyle = E.auge; ctx.lineWidth = 3; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.arc(53, -34, 8, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    } else {
+        ctx.fillStyle = E.auge;
+        ctx.beginPath(); ctx.ellipse(53, -34, 9, 12, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(50, -38, 3.6, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(56, -29, 2, 0, Math.PI * 2); ctx.fill();
+        // kleine Wimper
+        ctx.strokeStyle = E.auge; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(60, -41); ctx.lineTo(66, -44); ctx.stroke();
+    }
+
+    // Schnauze: Nüster + fröhliches Lächeln
+    ctx.fillStyle = E.maul;
+    ctx.beginPath(); ctx.ellipse(67, -30, 1.8, 2.4, 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = E.maul; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(64, -22, 5, 1.05 * Math.PI, 1.95 * Math.PI, true); ctx.stroke();
 }
 
 function spielerZeichnen() {
@@ -733,78 +843,32 @@ function spielerZeichnen() {
     const ph    = spieler.beinPhase;
 
     ctx.save();
-    ctx.translate(UX, feetY - 78);                 // Rumpf-Mitte
-    ctx.rotate(Math.max(-0.12, Math.min(0.05, spieler.vy * 0.006)));
+    ctx.translate(UX, feetY - 52);
+    ctx.rotate(Math.max(-0.12, Math.min(0.06, spieler.vy * 0.006)));
 
-    // Schweif (hinten)
+    // Beine (stummelig, Galopp; im Sprung gespreizt)
+    const def = [[-30, false], [-16, false], [14, true], [30, true]];
+    const beine = def.map(([hx, vorne], i) => {
+        const swing = jump ? (vorne ? 0.6 : -0.6) : Math.sin(ph + i * Math.PI / 2) * 0.5;
+        return { hx, hy: 20, fx: hx + Math.sin(swing) * 12, fy: 52 + (jump ? -10 : 0) };
+    });
+
     schweifZeichnen(ph);
+    silhouette(beine, E.outline, 3.5);
+    silhouette(beine, E.fell, 0);
+    for (const L of beine) hufZeichnen(L.fx, L.fy);
 
-    // Ferne Beine (dunkler = Tiefe)
-    beinZeichnen(-36, 18, ph + Math.PI,        jump, E.schatten);
-    beinZeichnen( 30, 18, ph + Math.PI * 0.5,  jump, E.schatten);
+    // Bauch sanft schattieren
+    ctx.fillStyle = E.bauch; ctx.globalAlpha = 0.5;
+    ctx.beginPath(); ctx.ellipse(-2, 20, 34, 13, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    // Ohr-Innenseite
+    ctx.fillStyle = E.ohrInnen;
+    ctx.beginPath(); ctx.moveTo(32, -55); ctx.lineTo(30, -70); ctx.lineTo(42, -56); ctx.closePath(); ctx.fill();
 
-    // Körper: Rumpf, Hinterhand, Brust, hellerer Bauch
-    ctx.fillStyle = E.fell;
-    ctx.beginPath(); ctx.ellipse(-2, 0, 54, 30, -0.04, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(-42, -4, 24, 26, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(36, 2, 20, 24, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = E.bauch;
-    ctx.beginPath(); ctx.ellipse(-2, 14, 46, 14, 0, 0, Math.PI); ctx.fill();
-
-    // Nahe Beine (volle Fellfarbe)
-    beinZeichnen(-44, 20, ph,                  jump, E.fell);
-    beinZeichnen( 24, 20, ph + Math.PI * 1.5,  jump, E.fell);
-
-    // Hals
-    ctx.fillStyle = E.fell;
-    ctx.beginPath();
-    ctx.moveTo(28, -12);
-    ctx.quadraticCurveTo(42, -22, 54, -52);
-    ctx.quadraticCurveTo(60, -64, 70, -60);
-    ctx.quadraticCurveTo(62, -38, 50, -4);
-    ctx.closePath(); ctx.fill();
-
-    // Mähne am Hals
-    maehneZeichnen(Math.sin(ph * 0.5) * 3);
-
-    // Kopf (länglicher Pferdekopf)
-    ctx.save();
-    ctx.translate(62, -60);
-    ctx.fillStyle = E.fell;
-    ctx.beginPath();
-    ctx.moveTo(-6, -12);                         // Poll
-    ctx.quadraticCurveTo(14, -15, 20, -1);       // Stirn → Nasenrücken
-    ctx.quadraticCurveTo(29, 12, 29, 19);        // Nase hinunter
-    ctx.quadraticCurveTo(27, 26, 19, 25);        // Maul
-    ctx.quadraticCurveTo(8, 23, 3, 13);          // Kinn/Kehle
-    ctx.quadraticCurveTo(-8, 4, -6, -12);        // Wange zurück
-    ctx.closePath(); ctx.fill();
-
-    // Ohren
-    ctx.beginPath(); ctx.moveTo(-6, -12); ctx.lineTo(-11, -29); ctx.lineTo(2, -14); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(3, -13);  ctx.lineTo(4, -30);   ctx.lineTo(13, -14); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = E.wange;
-    ctx.beginPath(); ctx.moveTo(-5, -14); ctx.lineTo(-8, -25); ctx.lineTo(0, -15); ctx.closePath(); ctx.fill();
-
-    // Auge
-    if (spieler.blink > 190) {
-        ctx.strokeStyle = E.auge; ctx.lineWidth = 2; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(4, -2); ctx.lineTo(12, -2); ctx.stroke();
-    } else {
-        ctx.fillStyle = E.auge;
-        ctx.beginPath(); ctx.arc(8, -2, 3.4, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(9, -3, 1.2, 0, Math.PI * 2); ctx.fill();
-    }
-    // Nüster + Wange
-    ctx.fillStyle = E.nuest;
-    ctx.beginPath(); ctx.ellipse(24, 15, 2, 3, 0.3, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = E.wange; ctx.globalAlpha = 0.55;
-    ctx.beginPath(); ctx.arc(11, 7, 5, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
-
-    forelockZeichnen();
+    maehneZeichnen(ph);
+    kopfDetails();
     hornZeichnen();
-    ctx.restore();
 
     ctx.restore();
 }
@@ -879,15 +943,36 @@ function anzeigeZeichnen() {
     ctx.font      = 'bold 48px ' + SCHRIFT;
     ctx.fillText(ziel || '', W / 2, 84);
 
-    // Fortschritt
+    // Fortschritt (rechts)
     glasPill(W - 150, 12, 138, 48, 24);
     ctx.fillStyle    = '#33506e';
     ctx.font         = 'bold 21px ' + SCHRIFT;
-    ctx.fillText(`⭐ ${punkte} / ${ZIEL_PRO_LEVEL}`, W - 81, 43);
+    if (level === 1) ctx.fillText(`⭐ ${punkte} / ${ZIEL_PRO_LEVEL}`, W - 81, 43);
+    else             ctx.fillText(`📖 ${wortIndex + 1} / ${WOERTER.length}`, W - 81, 43);
 
-    // Hüpf-Hinweis (erste Runden)
-    if (punkte < 3) {
+    // Level 2: Wort-Baukasten oben links (Bild + entstehendes Wort)
+    if (level === 2) {
+        const wo = WOERTER[wortIndex];
+        const slots = wo.wort.length;
+        const pillW = 64 + slots * 34;
+        glasPill(12, 12, pillW, 60, 22);
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.font = '36px ' + SCHRIFT;
+        ctx.fillText(wo.bild, 20, 43);
+        ctx.textAlign = 'center';
+        for (let i = 0; i < slots; i++) {
+            const caught = i < gebaut.length;
+            ctx.fillStyle = caught ? '#ff5da2' : '#cdd3e0';
+            ctx.font = 'bold 30px ' + SCHRIFT;
+            ctx.fillText(caught ? wo.wort[i] : '_', 64 + i * 34 + 17, 46);
+        }
+        ctx.textBaseline = 'alphabetic';
+    }
+
+    // Hüpf-Hinweis nur ganz am Anfang von Level 1
+    if (level === 1 && punkte < 3) {
         ctx.font = 'bold 15px ' + SCHRIFT;
+        ctx.textAlign = 'center';
         const txt = '⬆️ Pfeiltaste nach oben zum Hüpfen!';
         const tb = ctx.measureText(txt).width + 40;
         glasPill(W / 2 - tb / 2, 108, tb, 34, 17);
@@ -910,7 +995,7 @@ function flashZeichnen() {
         ctx.shadowOffsetY = 5;
         ctx.font         = 'bold 68px ' + SCHRIFT;
         ctx.fillStyle    = 'white';
-        ctx.fillText(`🦴 SUPER! 🦴`, W / 2, H / 2 - 18);
+        ctx.fillText(`✨ SUPER! ✨`, W / 2, H / 2 - 18);
         ctx.font         = 'bold 54px ' + SCHRIFT;
         ctx.fillStyle    = '#ffd34d';
         ctx.fillText(letzterTreffer, W / 2, H / 2 + 46);
@@ -993,21 +1078,42 @@ function startbildschirmZeichnen() {
     knopfZeichnen('LOS! 🦄', 396, 260);
 }
 
+function levelZwischenZeichnen() {
+    hintergrundZeichnen();
+    karteZeichnen(W / 2 - 300, 80, 600, 446);
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font         = '54px ' + SCHRIFT;
+    ctx.fillText('🎉', W / 2, 152);
+    ctx.fillStyle    = '#ff5da2';
+    ctx.font         = 'bold 42px ' + SCHRIFT;
+    ctx.fillText('Buchstaben geschafft!', W / 2, 208);
+    ctx.fillStyle    = '#33506e';
+    ctx.font         = '22px ' + SCHRIFT;
+    ctx.fillText('Jetzt suchen wir ganze Wörter!', W / 2, 250);
+    ctx.font = '44px ' + SCHRIFT;
+    ctx.fillText(WOERTER.map(w => w.bild).join('   '), W / 2, 322);
+    ctx.fillStyle    = '#7a8aa0';
+    ctx.font         = '16px ' + SCHRIFT;
+    ctx.fillText('Fang die Buchstaben – oben links entsteht das Wort', W / 2, 366);
+    knopfZeichnen('Wörter suchen! 🔤', 404, 300);
+}
+
 function gewonnenZeichnen() {
     hintergrundZeichnen();
     karteZeichnen(W / 2 - 300, 92, 600, 416);
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.font         = '54px ' + SCHRIFT;
-    ctx.fillText('🏆', W / 2, 168);
+    ctx.fillText('🏆', W / 2, 162);
     ctx.fillStyle    = '#ff5da2';
     ctx.font         = 'bold 44px ' + SCHRIFT;
-    ctx.fillText('Geschafft!', W / 2, 226);
+    ctx.fillText('Geschafft!', W / 2, 218);
     ctx.fillStyle    = '#33506e';
     ctx.font         = '23px ' + SCHRIFT;
-    ctx.fillText('Du hast alle Buchstaben gefangen!', W / 2, 276);
-    ctx.font = '46px ' + SCHRIFT;
-    ctx.fillText('🦄✨🌈', W / 2, 348);
+    ctx.fillText('Du hast alle Wörter geschafft!', W / 2, 264);
+    ctx.font = '44px ' + SCHRIFT;
+    ctx.fillText(WOERTER.map(w => w.bild).join('  '), W / 2, 336);
     knopfZeichnen('Nochmal! 🦄', 388, 280);
 }
 
@@ -1021,8 +1127,9 @@ ziel     = '';
 
 function zeichnen() {
     ctx.clearRect(0, 0, W, H);
-    if (zustand === 'start')    { startbildschirmZeichnen(); return; }
-    if (zustand === 'gewonnen') { gewonnenZeichnen();        return; }
+    if (zustand === 'start')         { startbildschirmZeichnen(); return; }
+    if (zustand === 'gewonnen')      { gewonnenZeichnen();        return; }
+    if (zustand === 'levelzwischen') { levelZwischenZeichnen();   return; }
     hintergrundZeichnen();
     blasenZeichnen();
     spielerZeichnen();

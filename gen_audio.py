@@ -6,15 +6,20 @@ RATE = "-12%"
 OUT = "audio"
 
 # Ausgeschriebene deutsche Buchstabennamen — verhindert, dass die TTS einzelne
-# Buchstaben englisch ausspricht ("find i" statt "finde i").
+# Buchstaben englisch ausspricht, und macht die Aussprache klar/eindeutig.
+# Vokale verlängert (Uuh/Aah), Konsonanten verdoppelt (Ell/Emm/Enn/Err/Ess),
+# damit z. B. L klar nach L klingt und U nicht mit O verwechselt wird.
 BUCHSTABEN_NAMEN = {
-    "a": "Ah",  "b": "Beh", "c": "Zeh", "d": "Deh", "e": "Eh",  "f": "Eff",
-    "g": "Geh", "h": "Ha",  "i": "Ih",  "j": "Jot", "k": "Kah", "l": "El",
-    "m": "Em",  "n": "En",  "o": "Oh",  "p": "Peh", "q": "Ku",  "r": "Er",
+    "a": "Aah", "b": "Beh", "c": "Zeh", "d": "Deh", "e": "Eh",  "f": "Eff",
+    "g": "Geh", "h": "Hah", "i": "Ieh", "j": "Jott","k": "Kah", "l": "Ell",
+    "m": "Emm", "n": "Enn", "o": "Oh",  "p": "Peh", "q": "Kuh", "r": "Err",
     # "Ix" wuerde als roemische Zahl IX ("neun") gelesen — deshalb "Iks"
-    "s": "Es",  "t": "Teh", "u": "Uh",  "v": "Vau", "w": "Weh", "x": "Iks",
+    "s": "Ess", "t": "Teh", "u": "Uuh", "v": "Fau", "w": "Weh", "x": "Iks",
     "y": "Ypsilon", "z": "Zett",
 }
+
+# Level 2 (Einhorn): kurze Wörter, die buchstabiert werden
+WOERTER = ["Haus", "Maus", "Wurm", "Baum"]
 
 entries = {}
 for c, name in BUCHSTABEN_NAMEN.items():
@@ -32,6 +37,11 @@ entries["super_buchstaben_geschafft_jetzt_kommen_zahlen"] = "Super! Buchstaben g
 entries["wahnsinn_du_hast_alle_zahlen_gefunden"] = "Wahnsinn! Du hast alle Zahlen gefunden!"
 entries["wahnsinn_du_hast_alle_buchstaben_gefangen"] = "Wahnsinn! Du hast alle Buchstaben gefangen!"
 entries["schade_versuch_es_nochmal"] = "Schade! Versuch es nochmal!"
+# Level 2 (Einhorn): Wort-Ansagen + Übergänge
+for w in WOERTER:
+    entries[f"wort_{w.lower()}"] = f"{w}!"
+entries["super_jetzt_kommen_woerter"] = "Super! Jetzt suchen wir Wörter!"
+entries["wahnsinn_du_hast_alle_woerter_geschafft"] = "Wahnsinn! Du hast alle Wörter geschafft!"
 
 os.makedirs(OUT, exist_ok=True)
 sem = asyncio.Semaphore(6)
