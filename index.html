@@ -7,7 +7,7 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            background: #87CEEB;
+            background: linear-gradient(160deg, #c7e8fb 0%, #e8f6ff 55%, #fdeede 100%);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -16,8 +16,8 @@
         }
         canvas {
             display: block;
-            border-radius: 16px;
-            box-shadow: 0 0 60px rgba(0, 100, 200, 0.3);
+            border-radius: 28px;
+            box-shadow: 0 24px 60px rgba(43, 84, 126, 0.22);
         }
     </style>
 </head>
@@ -47,13 +47,17 @@ const GRAVITY    = 0.65;
 const JUMP_V     = -15;
 const GLOW_UNTIL = 6;
 
+// Runde, freundliche Schrift — auf iOS/macOS vorinstalliert, sonst weicher Fallback
+const SCHRIFT = '"Arial Rounded MT Bold", "Nunito", "Quicksand", "Trebuchet MS", sans-serif';
+
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 const ZAHLEN   = Array.from({length: 21}, (_, i) => String(i)); // 0–20
+// Kräftige, freundliche Töne — weiße Schrift bleibt überall lesbar
 const FARBEN   = [
-    '#FF6B6B','#4ECDC4','#45B7D1','#FFA94D','#A9E34B',
-    '#DDA0DD','#FFD43B','#74C0FC','#F783AC','#63E6BE',
-    '#FF8787','#66D9E8','#A9C4EB','#FFEC99','#B2F2BB',
-    '#FAB005','#E599F7','#74C0FC','#FFA8A8','#8CE99A',
+    '#FF6B6B','#4ECDC4','#45B7D1','#FFA94D','#82C91E',
+    '#CC5DE8','#F59F00','#4DABF7','#F783AC','#38D9A9',
+    '#FF8787','#22B8CF','#5C7CFA','#20C997','#51CF66',
+    '#FAB005','#BE4BDB','#3B82F6','#E64980','#40C057',
     '#FF922B','#748FFC','#3BC9DB','#F06595','#69DB7C',
     '#DA77F2'
 ];
@@ -500,48 +504,79 @@ function sternZeichnen(mx, my, r) {
     ctx.fill();
 }
 
-// ── Hintergrund ────────────────────────────────────────────────────────────
+// ── Hintergrund: weiche Pastell-Landschaft ─────────────────────────────────
+const WOLKEN = [
+    { x:  90, y:  75, g: 1.0,  a: 0.85, v: 0.10 },
+    { x: 320, y:  45, g: 0.7,  a: 0.75, v: 0.06 },
+    { x: 580, y:  95, g: 0.85, a: 0.70, v: 0.08 },
+    { x: 730, y:  40, g: 0.55, a: 0.65, v: 0.05 },
+];
+
+function huegel(cx, cy, rx, ry, farbe) {
+    ctx.fillStyle = farbe;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, 0);
+    ctx.fill();
+}
+
 function hintergrundZeichnen() {
+    const BODEN = GROUND + PH;
+
+    // Himmel
     const grad = ctx.createLinearGradient(0, 0, 0, H);
-    if (aktiverLevel === 2) {
-        // Sonnenuntergang für Level 2
-        grad.addColorStop(0,    '#7B1FA2');
-        grad.addColorStop(0.35, '#E91E63');
-        grad.addColorStop(0.7,  '#FF9800');
-        grad.addColorStop(1,    '#FFCC80');
-    } else {
-        grad.addColorStop(0,    '#4FC3F7');
-        grad.addColorStop(0.55, '#81D4FA');
-        grad.addColorStop(1,    '#B3E5FC');
+    if (aktiverLevel === 2) {           // sanfter Pastell-Sonnenuntergang
+        grad.addColorStop(0,   '#9d8fe0');
+        grad.addColorStop(0.5, '#f5a8c5');
+        grad.addColorStop(1,   '#ffd9a3');
+    } else {                            // weicher Tag
+        grad.addColorStop(0,   '#7cc6f2');
+        grad.addColorStop(0.6, '#b4e0f9');
+        grad.addColorStop(1,   '#e6f6ff');
     }
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
-    const wolkenAlpha = aktiverLevel === 2 ? 0.55 : 1;
-    wolkeZeichnen(90,  75, 1.0,  0.92 * wolkenAlpha);
-    wolkeZeichnen(320, 45, 0.75, 0.88 * wolkenAlpha);
-    wolkeZeichnen(580, 90, 0.9,  0.85 * wolkenAlpha);
-    wolkeZeichnen(730, 40, 0.6,  0.8  * wolkenAlpha);
+    // Sonne mit weichem Halo
+    const sx = aktiverLevel === 2 ? W - 140 : 120;
+    const sy = aktiverLevel === 2 ? BODEN - 110 : 95;
+    const sFarbe = aktiverLevel === 2 ? '255,170,120' : '255,228,130';
+    const halo = ctx.createRadialGradient(sx, sy, 10, sx, sy, 150);
+    halo.addColorStop(0, `rgba(${sFarbe},0.85)`);
+    halo.addColorStop(0.35, `rgba(${sFarbe},0.30)`);
+    halo.addColorStop(1, `rgba(${sFarbe},0)`);
+    ctx.fillStyle = halo;
+    ctx.fillRect(sx - 150, sy - 150, 300, 300);
+    ctx.fillStyle = aktiverLevel === 2 ? '#ffb27a' : '#ffe98a';
+    ctx.beginPath();
+    ctx.arc(sx, sy, 38, 0, Math.PI * 2);
+    ctx.fill();
 
-    const bg = ctx.createLinearGradient(0, GROUND + PH, 0, H);
+    // Wolken driften langsam
+    const wolkenAlpha = aktiverLevel === 2 ? 0.5 : 1;
+    for (const w of WOLKEN) {
+        w.x += w.v;
+        if (w.x > W + 130) w.x = -130;
+        wolkeZeichnen(w.x, w.y, w.g, w.a * wolkenAlpha);
+    }
+
+    // Weiche Hügel statt flacher Wiese
     if (aktiverLevel === 2) {
-        bg.addColorStop(0,    '#388E3C');
-        bg.addColorStop(0.25, '#2E7D32');
-        bg.addColorStop(1,    '#1B5E20');
+        huegel(W * 0.22, BODEN + 14, 330, 80, '#7cb86e');
+        huegel(W * 0.78, BODEN + 14, 360, 62, '#8fc97f');
     } else {
-        bg.addColorStop(0,    '#66BB6A');
-        bg.addColorStop(0.25, '#4CAF50');
-        bg.addColorStop(1,    '#2E7D32');
+        huegel(W * 0.22, BODEN + 14, 330, 80, '#8fd483');
+        huegel(W * 0.78, BODEN + 14, 360, 62, '#a5dd96');
+    }
+    const bg = ctx.createLinearGradient(0, BODEN, 0, H);
+    if (aktiverLevel === 2) {
+        bg.addColorStop(0, '#6fae62');
+        bg.addColorStop(1, '#4d8a45');
+    } else {
+        bg.addColorStop(0, '#7fcb72');
+        bg.addColorStop(1, '#5aac52');
     }
     ctx.fillStyle = bg;
-    ctx.fillRect(0, GROUND + PH, W, H - GROUND - PH);
-
-    ctx.strokeStyle = aktiverLevel === 2 ? '#558B2F' : '#81C784';
-    ctx.lineWidth   = 3;
-    ctx.beginPath();
-    ctx.moveTo(0, GROUND + PH);
-    ctx.lineTo(W, GROUND + PH);
-    ctx.stroke();
+    ctx.fillRect(0, BODEN + 8, W, H - BODEN - 8);
 }
 
 function wolkeZeichnen(x, y, groesse, deckkraft) {
@@ -841,24 +876,30 @@ function buchstabenZeichnen() {
         ctx.save();
         ctx.translate(b.x, b.y);
         if (b.leuchtet) {
-            ctx.shadowColor = '#FFD700';
-            ctx.shadowBlur  = 28 + Math.sin(b.glowT) * 16;
+            ctx.shadowColor   = '#FFD700';
+            ctx.shadowBlur    = 28 + Math.sin(b.glowT) * 16;
+            ctx.shadowOffsetY = 0;
+        } else {
+            ctx.shadowColor   = 'rgba(30, 60, 95, 0.20)';
+            ctx.shadowBlur    = 14;
+            ctx.shadowOffsetY = 6;
         }
         ctx.fillStyle = b.farbe;
         ctx.beginPath();
         ctx.arc(0, 0, LETTER_R, 0, Math.PI * 2);
         ctx.fill();
+        ctx.shadowBlur    = 0;
+        ctx.shadowOffsetY = 0;
         if (b.leuchtet) {
             ctx.strokeStyle = `rgba(255,220,0,${0.7 + Math.sin(b.glowT) * 0.3})`;
-            ctx.lineWidth   = 4.5;
+            ctx.lineWidth   = 5;
         } else {
-            ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-            ctx.lineWidth   = 2;
+            ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+            ctx.lineWidth   = 3.5;
         }
-        ctx.shadowBlur    = 0;
         ctx.stroke();
         ctx.fillStyle     = 'white';
-        ctx.font          = b.buchstabe.length > 1 ? 'bold 28px Arial' : 'bold 42px Arial';
+        ctx.font          = (b.buchstabe.length > 1 ? 'bold 30px ' : 'bold 44px ') + SCHRIFT;
         ctx.textAlign     = 'center';
         ctx.textBaseline  = 'middle';
         ctx.fillText(b.buchstabe, 0, 2);
@@ -866,80 +907,105 @@ function buchstabenZeichnen() {
     }
 }
 
-// ── HUD ────────────────────────────────────────────────────────────────────
+// ── HUD: helle Glas-Pills mit dunkler Schrift ──────────────────────────────
+function glasPill(x, y, b, h, r) {
+    ctx.shadowColor   = 'rgba(30, 60, 95, 0.16)';
+    ctx.shadowBlur    = 12;
+    ctx.shadowOffsetY = 4;
+    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    rundesRechteck(x, y, b, h, r);
+    ctx.fill();
+    ctx.shadowBlur    = 0;
+    ctx.shadowOffsetY = 0;
+}
+
 function anzeigeZeichnen() {
     // Zielbox – nur in den ersten drei Runden
     if (punkte < 3) {
-        ctx.fillStyle = 'rgba(0,0,0,0.42)';
-        rundesRechteck(W / 2 - 155, 8, 310, 72, 16);
-        ctx.fill();
-        ctx.fillStyle    = '#FFD700';
-        ctx.font         = 'bold 17px Arial';
+        glasPill(W / 2 - 150, 12, 300, 70, 24);
+        ctx.fillStyle    = '#7a8aa0';
+        ctx.font         = 'bold 16px ' + SCHRIFT;
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'alphabetic';
-        ctx.fillText(aktiverLevel === 1 ? 'Finde den Buchstaben:' : 'Finde die Zahl:', W / 2, 31);
-        ctx.fillStyle = 'white';
-        ctx.font      = 'bold 38px Arial';
-        ctx.fillText(ziel, W / 2, 68);
+        ctx.fillText(aktiverLevel === 1 ? 'Finde den Buchstaben' : 'Finde die Zahl', W / 2, 36);
+        ctx.fillStyle = '#ff5da2';
+        ctx.font      = 'bold 36px ' + SCHRIFT;
+        ctx.fillText(ziel, W / 2, 72);
     }
 
-    // Herzen
+    // Herzen in einer Pill
+    glasPill(12, 12, 128, 44, 22);
     for (let i = 0; i < 3; i++) {
-        ctx.font      = '30px Arial';
+        ctx.font      = '26px Arial';
         ctx.textAlign = 'left';
-        ctx.fillStyle = i < leben ? '#FF4757' : '#555';
-        ctx.fillText('♥', 14 + i * 40, 46);
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = i < leben ? '#FF4757' : '#d4dbe4';
+        ctx.fillText('♥', 26 + i * 36, 44);
     }
 
-    // Punkte + Geschwindigkeitsanzeige
+    // Punkte + Stufe in einer Pill
     const level = Math.floor(punkte / 3) + 1;
-    ctx.fillStyle   = '#E91E8C';
-    ctx.font        = 'bold 20px Arial';
-    ctx.textAlign   = 'right';
-    ctx.fillText(`🦴 ${punkte}`, W - 14, 38);
-    ctx.fillStyle   = 'rgba(255,255,255,0.7)';
-    ctx.font        = '13px Arial';
-    ctx.fillText(`Stufe ${level}`, W - 14, 57);
+    glasPill(W - 146, 12, 134, 64, 24);
+    ctx.fillStyle   = '#33506e';
+    ctx.font        = 'bold 21px ' + SCHRIFT;
+    ctx.textAlign   = 'center';
+    ctx.fillText(`🦴 ${punkte}`, W - 79, 41);
+    ctx.fillStyle   = '#7a8aa0';
+    ctx.font        = 'bold 13px ' + SCHRIFT;
+    ctx.fillText(`Stufe ${level}`, W - 79, 64);
 
-    // Leuchthinweis
+    // Leuchthinweis — oben, unter der Zielbox
     if (punkte < GLOW_UNTIL) {
         const hinweis = aktiverLevel === 1
             ? '✨ Der richtige Buchstabe leuchtet golden auf!'
             : '✨ Die richtige Zahl leuchtet golden auf!';
-        ctx.fillStyle    = 'rgba(255,200,0,0.72)';
-        ctx.font         = '14px Arial';
+        ctx.font = 'bold 15px ' + SCHRIFT;
+        const tb = ctx.measureText(hinweis).width + 40;
+        const hy = punkte < 3 ? 92 : 16;
+        glasPill(W / 2 - tb / 2, hy, tb, 36, 18);
+        ctx.fillStyle    = '#c98a00';
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'alphabetic';
-        ctx.fillText(hinweis, W / 2, H - 16);
+        ctx.fillText(hinweis, W / 2, hy + 24);
     }
 }
 
 // ── Flash-Overlay ──────────────────────────────────────────────────────────
 function flashZeichnen() {
     if (flashTimer <= 0) return;
-    const alpha = Math.min(1, flashTimer / 30) * 0.35;
+    const alpha = Math.min(1, flashTimer / 30) * 0.25;
     if (flashTyp === 'gut') {
-        ctx.fillStyle = `rgba(0,200,80,${alpha})`;
+        ctx.fillStyle = `rgba(120,210,140,${alpha})`;
         ctx.fillRect(0, 0, W, H);
         if (flashTimer > 55) {
             ctx.textAlign    = 'center';
             ctx.textBaseline = 'middle';
-            ctx.font         = 'bold 72px Arial';
+            ctx.shadowColor   = 'rgba(30,60,95,0.35)';
+            ctx.shadowBlur    = 18;
+            ctx.shadowOffsetY = 5;
+            ctx.font         = 'bold 68px ' + SCHRIFT;
             ctx.fillStyle    = 'white';
             ctx.fillText(`🦴 SUPER! 🦴`, W / 2, H / 2 - 18);
-            ctx.font         = 'bold 54px Arial';
-            ctx.fillStyle    = '#FFD700';
+            ctx.font         = 'bold 54px ' + SCHRIFT;
+            ctx.fillStyle    = '#ffd34d';
             ctx.fillText(letzterTreffer, W / 2, H / 2 + 46);
+            ctx.shadowBlur    = 0;
+            ctx.shadowOffsetY = 0;
         }
     } else {
-        ctx.fillStyle = `rgba(220,0,0,${alpha})`;
+        ctx.fillStyle = `rgba(235,90,90,${alpha})`;
         ctx.fillRect(0, 0, W, H);
         if (flashTimer > 28) {
             ctx.textAlign    = 'center';
             ctx.textBaseline = 'middle';
-            ctx.font         = 'bold 58px Arial';
+            ctx.shadowColor   = 'rgba(30,60,95,0.35)';
+            ctx.shadowBlur    = 18;
+            ctx.shadowOffsetY = 5;
+            ctx.font         = 'bold 56px ' + SCHRIFT;
             ctx.fillStyle    = 'white';
             ctx.fillText('Ups! ❌', W / 2, H / 2);
+            ctx.shadowBlur    = 0;
+            ctx.shadowOffsetY = 0;
         }
     }
 }
@@ -957,133 +1023,129 @@ function partikelZeichnen() {
     }
 }
 
-// ── Bildschirme ────────────────────────────────────────────────────────────
+// ── Bildschirme: weiche Karte auf der Landschaft statt dunklem Overlay ─────
+function karteZeichnen(x, y, b, h) {
+    ctx.shadowColor   = 'rgba(30, 60, 95, 0.25)';
+    ctx.shadowBlur    = 36;
+    ctx.shadowOffsetY = 14;
+    ctx.fillStyle = 'rgba(255,255,255,0.94)';
+    rundesRechteck(x, y, b, h, 32);
+    ctx.fill();
+    ctx.shadowBlur    = 0;
+    ctx.shadowOffsetY = 0;
+}
+
+function knopfZeichnen(text, y, breite = 280) {
+    const x = W / 2 - breite / 2;
+    ctx.shadowColor   = 'rgba(233, 30, 140, 0.45)';
+    ctx.shadowBlur    = 20;
+    ctx.shadowOffsetY = 8;
+    const kg = ctx.createLinearGradient(0, y, 0, y + 64);
+    kg.addColorStop(0, '#ff7ab8');
+    kg.addColorStop(1, '#f0408f');
+    ctx.fillStyle = kg;
+    rundesRechteck(x, y, breite, 64, 32);
+    ctx.fill();
+    ctx.shadowBlur    = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.fillStyle    = 'white';
+    ctx.font         = 'bold 28px ' + SCHRIFT;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, W / 2, y + 33);
+    ctx.textBaseline = 'alphabetic';
+}
+
 function startbildschirmZeichnen() {
     hintergrundZeichnen();
-    ctx.fillStyle = 'rgba(0,0,0,0.52)';
-    ctx.fillRect(0, 0, W, H);
+    karteZeichnen(W / 2 - 290, 84, 580, 432);
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle    = '#FFD700';
-    ctx.font         = 'bold 52px Arial';
-    ctx.fillText('🐾 Buchstaben Fang! 🐾', W / 2, 145);
-    ctx.fillStyle    = 'white';
-    ctx.font         = '24px Arial';
-    ctx.fillText('Fange den richtigen Buchstaben!', W / 2, 210);
-    ctx.fillText('Weiche den falschen aus!', W / 2, 247);
-    ctx.fillStyle    = '#FFB6C1';
-    ctx.font         = '20px Arial';
-    ctx.fillText('← → Bewegen     ↑ / Leertaste  Springen', W / 2, 308);
-    ctx.fillStyle    = '#E91E8C';
-    rundesRechteck(W / 2 - 130, 358, 260, 62, 31);
-    ctx.fill();
-    ctx.fillStyle    = 'white';
-    ctx.font         = 'bold 30px Arial';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('START!', W / 2, 389);
-    ctx.fillStyle    = 'rgba(255,255,255,0.45)';
-    ctx.font         = '16px Arial';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Leertaste, Enter oder Klick', W / 2, 470);
+    ctx.font         = '54px ' + SCHRIFT;
+    ctx.fillText('🐾', W / 2, 158);
+    ctx.fillStyle    = '#ff5da2';
+    ctx.font         = 'bold 46px ' + SCHRIFT;
+    ctx.fillText('Buchstaben Fang!', W / 2, 218);
+    ctx.fillStyle    = '#33506e';
+    ctx.font         = '21px ' + SCHRIFT;
+    ctx.fillText('Fange den richtigen Buchstaben!', W / 2, 268);
+    ctx.fillText('Weiche den falschen aus!', W / 2, 300);
+    ctx.fillStyle    = '#7a8aa0';
+    ctx.font         = '18px ' + SCHRIFT;
+    ctx.fillText('← → Bewegen   ·   ↑ / Leertaste Springen', W / 2, 348);
+    knopfZeichnen('START!', 396, 260);
+    ctx.fillStyle    = '#7a8aa0';
+    ctx.font         = '15px ' + SCHRIFT;
+    ctx.fillText('Leertaste, Enter oder Klick', W / 2, 496);
 }
 
 function spielendeZeichnen() {
     hintergrundZeichnen();
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    ctx.fillRect(0, 0, W, H);
+    karteZeichnen(W / 2 - 290, 92, 580, 416);
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle    = '#FF6B6B';
-    ctx.font         = 'bold 60px Arial';
-    ctx.fillText('Schade! 😢', W / 2, 168);
-    ctx.fillStyle    = 'white';
-    ctx.font         = '28px Arial';
-    ctx.fillText(`Du hast ${punkte} ${aktiverLevel === 1 ? 'Buchstaben' : 'Zahlen'} gefunden!`, W / 2, 242);
+    ctx.font         = '54px ' + SCHRIFT;
+    ctx.fillText('😢', W / 2, 168);
+    ctx.fillStyle    = '#ff5da2';
+    ctx.font         = 'bold 46px ' + SCHRIFT;
+    ctx.fillText('Schade!', W / 2, 228);
+    ctx.fillStyle    = '#33506e';
+    ctx.font         = '22px ' + SCHRIFT;
+    ctx.fillText(`Du hast ${punkte} ${aktiverLevel === 1 ? 'Buchstaben' : 'Zahlen'} gefunden!`, W / 2, 274);
     const sterne = Math.min(3, Math.max(1, Math.floor(punkte / 4) + 1));
-    ctx.font = '52px Arial';
+    ctx.font = '44px ' + SCHRIFT;
     for (let i = 0; i < 3; i++) {
-        ctx.fillStyle = i < sterne ? '#FFD700' : '#555';
-        ctx.fillText('🦴', W / 2 - 70 + i * 70, 320);
+        ctx.globalAlpha = i < sterne ? 1 : 0.25;
+        ctx.fillText('🦴', W / 2 - 64 + i * 64, 340);
     }
-    ctx.fillStyle    = '#E91E8C';
-    rundesRechteck(W / 2 - 140, 352, 280, 62, 31);
-    ctx.fill();
-    ctx.fillStyle    = 'white';
-    ctx.font         = 'bold 26px Arial';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Nochmal spielen! 🎮', W / 2, 383);
-    ctx.fillStyle    = 'rgba(255,255,255,0.45)';
-    ctx.font         = '16px Arial';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Leertaste, Enter oder Klick', W / 2, 462);
+    ctx.globalAlpha = 1;
+    knopfZeichnen('Nochmal spielen! 🎮', 386, 300);
+    ctx.fillStyle    = '#7a8aa0';
+    ctx.font         = '15px ' + SCHRIFT;
+    ctx.fillText('Leertaste, Enter oder Klick', W / 2, 486);
 }
 
 function levelZwischenZeichnen() {
-    // Sonnenuntergang-Hintergrund direkt zeichnen
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0,    '#7B1FA2');
-    grad.addColorStop(0.35, '#E91E63');
-    grad.addColorStop(0.7,  '#FF9800');
-    grad.addColorStop(1,    '#FFCC80');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = 'rgba(0,0,0,0.60)';
-    ctx.fillRect(0, 0, W, H);
+    hintergrundZeichnen();
+    karteZeichnen(W / 2 - 300, 80, 600, 440);
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle    = '#FFD700';
-    ctx.font         = 'bold 54px Arial';
-    ctx.fillText('🎉 Buchstaben geschafft! 🎉', W / 2, 148);
-    ctx.fillStyle    = 'white';
-    ctx.font         = '28px Arial';
-    ctx.fillText('Super gemacht! Jetzt kommen', W / 2, 212);
-    ctx.fillStyle    = '#FF9800';
-    ctx.font         = 'bold 52px Arial';
-    ctx.fillText('Zahlen von 0 bis 20!', W / 2, 285);
-    ctx.fillStyle    = 'white';
-    ctx.font         = '26px Arial';
-    ctx.fillText('Fange wieder die richtige Zahl!', W / 2, 340);
-    ctx.fillStyle    = '#E91E8C';
-    rundesRechteck(W / 2 - 140, 372, 280, 62, 31);
-    ctx.fill();
-    ctx.fillStyle    = 'white';
-    ctx.font         = 'bold 28px Arial';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Level 2 starten! 🔢', W / 2, 403);
+    ctx.font         = '54px ' + SCHRIFT;
+    ctx.fillText('🎉', W / 2, 158);
+    ctx.fillStyle    = '#ff5da2';
+    ctx.font         = 'bold 44px ' + SCHRIFT;
+    ctx.fillText('Buchstaben geschafft!', W / 2, 216);
+    ctx.fillStyle    = '#33506e';
+    ctx.font         = '22px ' + SCHRIFT;
+    ctx.fillText('Super gemacht! Jetzt kommen', W / 2, 266);
+    ctx.fillStyle    = '#f59a23';
+    ctx.font         = 'bold 40px ' + SCHRIFT;
+    ctx.fillText('Zahlen von 0 bis 20!', W / 2, 320);
+    ctx.fillStyle    = '#7a8aa0';
+    ctx.font         = '19px ' + SCHRIFT;
+    ctx.fillText('Fange wieder die richtige Zahl!', W / 2, 362);
+    knopfZeichnen('Level 2 starten! 🔢', 404, 300);
 }
 
 function gewonnenZeichnen() {
-    // Sonnenuntergang-Hintergrund
-    const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0,    '#7B1FA2');
-    grad.addColorStop(0.35, '#E91E63');
-    grad.addColorStop(0.7,  '#FF9800');
-    grad.addColorStop(1,    '#FFCC80');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = 'rgba(0,0,0,0.58)';
-    ctx.fillRect(0, 0, W, H);
+    hintergrundZeichnen();
+    karteZeichnen(W / 2 - 300, 74, 600, 452);
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle    = '#FFD700';
-    ctx.font         = 'bold 50px Arial';
-    ctx.fillText('🏆 Alle Zahlen gefunden! 🏆', W / 2, 148);
-    ctx.fillStyle    = 'white';
-    ctx.font         = '27px Arial';
-    ctx.fillText('Wahnsinn! Du bist ein Zahlen-Profi!', W / 2, 215);
-    ctx.fillStyle    = '#FF9800';
-    ctx.font         = '26px Arial';
-    ctx.fillText('Buchstaben UND Zahlen gemeistert! 🐾', W / 2, 260);
-    ctx.font = '56px Arial';
-    ctx.fillStyle = 'white';
-    ctx.fillText('🦴🦴🦴', W / 2, 330);
-    ctx.fillStyle    = '#E91E8C';
-    rundesRechteck(W / 2 - 130, 358, 260, 62, 31);
-    ctx.fill();
-    ctx.fillStyle    = 'white';
-    ctx.font         = 'bold 26px Arial';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Nochmal spielen!', W / 2, 389);
+    ctx.font         = '54px ' + SCHRIFT;
+    ctx.fillText('🏆', W / 2, 152);
+    ctx.fillStyle    = '#ff5da2';
+    ctx.font         = 'bold 44px ' + SCHRIFT;
+    ctx.fillText('Alle Zahlen gefunden!', W / 2, 210);
+    ctx.fillStyle    = '#33506e';
+    ctx.font         = '22px ' + SCHRIFT;
+    ctx.fillText('Wahnsinn! Du bist ein Zahlen-Profi!', W / 2, 260);
+    ctx.fillStyle    = '#f59a23';
+    ctx.font         = 'bold 22px ' + SCHRIFT;
+    ctx.fillText('Buchstaben UND Zahlen gemeistert! 🐾', W / 2, 298);
+    ctx.font = '46px ' + SCHRIFT;
+    ctx.fillText('🦴🦴🦴', W / 2, 366);
+    knopfZeichnen('Nochmal spielen!', 410, 280);
 }
 
 // ── Eingabe ────────────────────────────────────────────────────────────────

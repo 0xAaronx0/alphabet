@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Marshalls Lernspiele</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            min-height: 100dvh;
+            background: linear-gradient(170deg, #7cc6f2 0%, #b4e0f9 45%, #e6f6ff 70%, #a5dd96 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 26px;
+            font-family: "Arial Rounded MT Bold", "Nunito", "Quicksand", "Trebuchet MS", sans-serif;
+            padding: 24px;
+            overflow: hidden;
+            position: relative;
+        }
+        .wolke {
+            position: absolute;
+            background: rgba(255,255,255,0.85);
+            border-radius: 999px;
+            filter: blur(1px);
+            animation: drift 60s linear infinite;
+        }
+        .wolke::before, .wolke::after {
+            content: '';
+            position: absolute;
+            background: inherit;
+            border-radius: 50%;
+        }
+        .w1 { width: 130px; height: 44px; top: 9%;  left: -140px; }
+        .w1::before { width: 56px; height: 56px; top: -26px; left: 22px; }
+        .w1::after  { width: 40px; height: 40px; top: -16px; left: 66px; }
+        .w2 { width: 100px; height: 36px; top: 22%; left: -140px; animation-delay: -28s; animation-duration: 80s; }
+        .w2::before { width: 44px; height: 44px; top: -20px; left: 18px; }
+        .w2::after  { width: 32px; height: 32px; top: -12px; left: 52px; }
+        @keyframes drift { to { transform: translateX(calc(100vw + 300px)); } }
+        .sonne {
+            position: absolute;
+            top: 6%; right: 8%;
+            width: 90px; height: 90px;
+            border-radius: 50%;
+            background: #ffe98a;
+            box-shadow: 0 0 70px 36px rgba(255, 228, 130, 0.55);
+        }
+        h1 {
+            color: #2b547e;
+            font-size: clamp(28px, 6vw, 46px);
+            text-align: center;
+            z-index: 1;
+        }
+        a.spiel {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            width: min(520px, 92vw);
+            padding: 20px 28px;
+            border-radius: 28px;
+            text-decoration: none;
+            color: #fff;
+            font-size: clamp(22px, 5vw, 32px);
+            font-weight: bold;
+            box-shadow: 0 14px 30px rgba(43, 84, 126, 0.25);
+            transition: transform .12s, box-shadow .12s;
+            z-index: 1;
+        }
+        a.spiel:hover  { transform: translateY(-3px); box-shadow: 0 20px 38px rgba(43, 84, 126, 0.3); }
+        a.spiel:active { transform: translateY(2px);  box-shadow: 0 8px 18px rgba(43, 84, 126, 0.25); }
+        .blasen { background: linear-gradient(135deg, #4dabf7, #2f6fd6); }
+        .fang   { background: linear-gradient(135deg, #ff7ab8, #f0408f); }
+        .emoji {
+            font-size: clamp(36px, 8vw, 52px);
+            background: rgba(255,255,255,0.22);
+            border-radius: 20px;
+            padding: 8px 12px;
+            line-height: 1;
+        }
+        .sub  { display: block; font-size: 15px; font-weight: normal; opacity: .85; margin-top: 4px; }
+        .hint { color: #2b547e; opacity: .65; font-size: 15px; text-align: center; z-index: 1; }
+    </style>
+</head>
+<body>
+    <div class="sonne"></div>
+    <div class="wolke w1"></div>
+    <div class="wolke w2"></div>
+    <h1>🐾 Marshalls Lernspiele 🐾</h1>
+    <a class="spiel blasen" href="blasen.html">
+        <span class="emoji">🫧</span>
+        <span>Buchstaben&#8209;Blasen!<span class="sub">Einfach tippen — für den Anfang</span></span>
+    </a>
+    <a class="spiel fang" href="fang.html">
+        <span class="emoji">🎈</span>
+        <span>Buchstaben Fang!<span class="sub">Springen mit der Leertaste</span></span>
+    </a>
+    <p class="hint">Tipp: Ton anmachen — Marshall sagt dir, was du suchen sollst! 🔊</p>
+</body>
+</html>
