@@ -34,12 +34,30 @@ Der User (aaron@nabla.fi) baut Browser-Lernspiele für seine **5-jährige Tochte
   ungetippt nach oben rausschwebt wird neu gewählt (`zielLeeren()` → `zielPending`). Erstes Ziel +
   ein paar Startblasen werden in `spielStart()` synchron gesetzt (Safari: Ansage VOR `musikStarten`).
 
-### Design (beide Spiele, seit 2026-06-13)
+### 3. `einhorn.html` — Einhorn-Buchstaben! (Endless-Runner, seit 2026-06-13)
+Im Stil von „Robot Unicorn Attack": ein Einhorn rennt mit konstanter Geschwindigkeit durch eine
+Fantasy-Welt (Parallax: Regenbogen, Sterne, driftende Wolken, Parallax-Hügel, Lauf-Streifen am
+Boden). Oben fliegen Buchstabenblasen von rechts herein. **Pfeil hoch / Leertaste / Tippen = Hüpfen**
+(Doppelsprung erlaubt); das Einhorn zerplatzt mit dem **Horn** die Zielblase. Angesagt wird **nur der
+Buchstabe** (z. B. „Zett") über `audio/nur_<x>.mp3` (`buchstabeAnsagen`→`clipAnsage`). 15 Buchstaben → gewonnen.
+Auf dem Server `einhorn.html`. Schlüssel-Details:
+- Auf den Boden gebaut wie die anderen, aber Spieler hat `sy/vy` (Sprung), Welt scrollt über `weltX`.
+- **Horn-Kollision:** `spielerZeichnen()` schreibt die Welt-Position der Hornspitze via
+  `ctx.getTransform()` nach `hornWelt`; `update()` prüft Abstand `hornWelt`↔Blase (nur Zielblase
+  ist fangbar; falsche wackeln nur). `update` läuft vor `zeichnen`, nutzt also `hornWelt` vom Vorframe.
+- **Kein Ketten-Treffer:** Kollision pausiert solange `flashTimer>0` (Jubel ~1 s nach Fang),
+  sonst würde ein Sprung mehrere Buchstaben auf einmal fangen.
+- Reichweite hängt an Geometrie: `BAND_MITTE`/`BAND_STREU` (Flughöhe) vs. Stand-Hornhöhe — Stand-Horn
+  muss klar unter dem Band bleiben, sonst Treffer ohne Sprung. Beim Ändern der Einhorn-Größe prüfen!
+- `funkeln()` (magischer Klang) statt `bellen()` (Hund) beim Fangen.
+
+### Design (alle Spiele, seit 2026-06-13)
 Modernes Kinder-Browsergame-Layout statt 90er-Look: weiche Pastell-Landschaft (driftende Wolken,
 Sonne mit Halo, runde Hügel), runde Schrift (`SCHRIFT`-Konstante), flache Blasen/Buchstaben mit
 weichem Schlagschatten, weiße Glas-Pills im HUD, Karten-Screens (`karteZeichnen`/`knopfZeichnen`)
 mit pinken Gradient-Buttons, Konfetti (Kreise + rotierende Streifen). Startseite = `start.html`
-(im Repo), auf dem Server als `index.html` deployt.
+(im Repo, 3 Buttons), auf dem Server als `index.html` deployt. `einhorn.html` ist aus `blasen.html`
+abgeleitet → **Audiosystem/Groove-Musik/Helfer sind identisch**, nur die Spiel-Logik unterscheidet sich.
 
 ---
 

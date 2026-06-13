@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Einhorn-Buchstaben!</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: linear-gradient(160deg, #c7e8fb 0%, #e8f6ff 55%, #fdeede 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            border-radius: 28px;
+            box-shadow: 0 24px 60px rgba(43, 84, 126, 0.22);
+            touch-action: none;
+        }
+    </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const W = 800, H = 600;
+canvas.width  = W;
+canvas.height = H;
+
+function resize() {
+    const s = Math.min(window.innerWidth / W, window.innerHeight / H) * 0.97;
+    canvas.style.width  = (W * s) + 'px';
+    canvas.style.height = (H * s) + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── Konstanten ─────────────────────────────────────────────────────────────
+const GROUND     = H - 78;        // Boden-Linie (Füße des Einhorns)
+const BLASE_R    = 42;
+const ZIEL_PRO_LEVEL = 15;
+const UX         = 200;           // feste X-Position des Einhorns
+const WELT_V     = 2.8;           // konstante Lauf-/Scrollgeschwindigkeit
+const GRAV       = 0.62;
+const JUMP_V     = -14.2;
+const BAND_MITTE = GROUND - 250;  // Flughöhe der Buchstabenblasen
+const BAND_STREU = 20;
+let   hornWelt   = { x: UX + 56, y: GROUND - 150 };  // Welt-Position der Hornspitze
+
+// Runde, freundliche Schrift — auf iOS/macOS vorinstalliert, sonst weicher Fallback
+const SCHRIFT = '"Arial Rounded MT Bold", "Nunito", "Quicksand", "Trebuchet MS", sans-serif';
+
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const ZAHLEN   = Array.from({length: 21}, (_, i) => String(i)); // 0–20
+// Kräftige, freundliche Töne — weiße Schrift bleibt auf jeder Blase lesbar
+const FARBEN   = [
+    '#FF6B6B','#4ECDC4','#45B7D1','#FFA94D','#82C91E',
+    '#CC5DE8','#F59F00','#4DABF7','#F783AC','#38D9A9',
+    '#FF8787','#22B8CF','#5C7CFA','#20C997','#51CF66',
+    '#FAB005','#BE4BDB','#3B82F6','#E64980','#40C057',
+    '#FF922B','#748FFC','#3BC9DB','#F06595','#69DB7C',
+    '#DA77F2'
+];
+const ZAHLEN_FARBEN = FARBEN.slice(0, 21);
+
+// ── Sprache: ausschließlich Deutsch ───────────────────────────────────────
+const synth = window.speechSynthesis;
+let deutscheStimme  = null;
+let aktuelleAussage = null; // verhindert Garbage-Collection der Utterance
+
+function stimmenLaden() {
+    const stimmen = synth.getVoices();
+    deutscheStimme =
+        stimmen.find(v => v.name === 'Anna') ||
+        stimmen.find(v => /Steffi|Markus|Yannick/i.test(v.name) && v.lang.startsWith('de')) ||
+        stimmen.find(v => v.name.startsWith('Google') && v.lang === 'de-DE') ||
+        stimmen.find(v => !v.localService && v.lang === 'de-DE') ||
+        stimmen.find(v => v.localService && v.lang === 'de-DE') ||
+        stimmen.find(v => v.lang.startsWith('de')) ||
+        null;
+}
+stimmenLaden();
+if (typeof synth.onvoiceschanged !== 'undefined') synth.onvoiceschanged = stimmenLaden;
+
+function sprechEinheit(text, tempo, tonhöhe) {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang  = 'de-DE';
+    u.rate  = tempo;
+    u.pitch = tonhöhe;
+    u.volume = 1;
+    if (deutscheStimme) u.voice = deutscheStimme;
+    return u;
+}
+
+// Natürliche Stimme: vorab erzeugte MP3-Clips (Katja), Web Speech nur als Fallback.
+// EIN wiederverwendetes Audio-Element — iOS entsperrt es bei der ersten Geste.
+const sprachClip = new Audio();
+sprachClip.preload = 'auto';
+
+function audioSchluessel(text) {
+    return text.toLowerCase()
+        .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+        .replace(/[^a-z0-9 ]/g, '').trim().replace(/ +/g, '_');
+}
+
+function sprechenFallback(text, tempo, tonhöhe) {
+    aktuelleAussage = sprechEinheit(text, tempo, tonhöhe);
+    synth.speak(aktuelleAussage);
+}
+
+function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
+    synth.cancel();
+    let fallbackAktiv = false; // verhindert doppelten Fallback (onerror + play-reject)
+    const fallback = () => { if (!fallbackAktiv) { fallbackAktiv = true; sprechenFallback(text, tempo, tonhöhe); } };
+    sprachClip.onerror = fallback;
+    sprachClip.src = 'audio/' + audioSchluessel(text) + '.mp3';
+    sprachClip.play().catch(fallback);
+}
+
+// Spielt einen bestimmten Clip (key) ab; Fallback spricht fallbackText.
+function clipAnsage(key, fallbackText, tempo = 0.82, tonhöhe = 1.25) {
+    synth.cancel();
+    let fallbackAktiv = false;
+    const fallback = () => { if (!fallbackAktiv) { fallbackAktiv = true; sprechenFallback(fallbackText, tempo, tonhöhe); } };
+    sprachClip.onerror = fallback;
+    sprachClip.src = 'audio/' + key + '.mp3';
+    sprachClip.play().catch(fallback);
+}
+
+// Nur den Buchstaben ansagen (z. B. „Zett") über audio/nur_<x>.mp3
+function buchstabeAnsagen(z) {
+    clipAnsage('nur_' + audioSchluessel(z), z, 0.8, 1.2);
+}
+
+function superSprechen() {
+    sprechen('Super!', 0.9, 1.5);
+}
+
+// ── Hintergrundmusik: dezenter Baile-Funk-Groove (eigene Komposition) ──────
+// Leiser, treibender Loop im brasilianischen Funk-Stil – komplett selbst
+// erzeugt (Drum-Machine aus Oszillatoren + Rauschen), KEIN Originalstück.
+const MUSIK_LAUTSTAERKE = 0.06;        // gesamte Musik leise im Hintergrund
+const BPM   = 128;
+const STEP  = 60 / BPM / 4;            // ein 16tel
+const TAKTE = 4;                       // 4-Takt-Schleife (64 Steps)
+
+// Pattern pro 16tel (1 = Anschlag) – eigener „Tamborzão"-artiger Groove
+const KICK = [1,0,0,1, 0,0,1,0, 0,1,1,0, 0,0,1,0];
+const CLAP = [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0];
+const HAT  = [1,0,1,1, 0,1,1,0, 1,0,1,1, 0,1,1,0];
+const BASS_WURZEL = [110.00, 82.41, 98.00, 87.31];   // A2 · E2 · G2 · F2 (je Takt)
+const MELODIE = [   // A-Moll-Pentatonik-Motiv, 0 = Pause
+    0, 440.00, 0, 523.25, 0, 0, 392.00, 0,
+    440.00, 0, 0, 587.33, 0, 523.25, 0, 0
+];
+
+let audioCtx      = null;
+let masterGain    = null;
+let rauschBuffer  = null;
+let musikStep     = 0;
+let naechsterStep = 0;
+
+function musikStarten() {
+    if (audioCtx) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        return;
+    }
+    audioCtx   = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+
+    const komp = audioCtx.createDynamicsCompressor();
+    komp.threshold.value = -18;
+    komp.ratio.value     = 4;
+    komp.attack.value    = 0.05;
+    komp.release.value   = 0.3;
+
+    masterGain.connect(komp);
+    komp.connect(audioCtx.destination);
+    masterGain.gain.value = MUSIK_LAUTSTAERKE;
+
+    // Rauschpuffer (für Clap & HiHat) einmalig erzeugen
+    rauschBuffer = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * 0.4), audioCtx.sampleRate);
+    const d = rauschBuffer.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+
+    musikStep     = 0;
+    naechsterStep = audioCtx.currentTime + 0.12;
+    grooveSchedulieren();
+}
+
+function bellen() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    [[0, 0.14], [0.22, 0.11]].forEach(([delay, dur]) => {
+        const osc  = audioCtx.createOscillator();
+        const filt = audioCtx.createBiquadFilter();
+        const env  = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(310, t + delay);
+        osc.frequency.exponentialRampToValueAtTime(110, t + delay + dur);
+        filt.type = 'bandpass';
+        filt.frequency.setValueAtTime(1700, t + delay);
+        filt.frequency.exponentialRampToValueAtTime(480, t + delay + dur);
+        filt.Q.value = 2.8;
+        env.gain.setValueAtTime(0, t + delay);
+        env.gain.linearRampToValueAtTime(0.6, t + delay + 0.010);
+        env.gain.exponentialRampToValueAtTime(0.001, t + delay + dur);
+        osc.connect(filt); filt.connect(env); env.connect(audioCtx.destination);
+        osc.start(t + delay); osc.stop(t + delay + dur + 0.02);
+
+        const osc2 = audioCtx.createOscillator();
+        const env2 = audioCtx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(190, t + delay);
+        osc2.frequency.exponentialRampToValueAtTime(75, t + delay + dur * 0.75);
+        env2.gain.setValueAtTime(0, t + delay);
+        env2.gain.linearRampToValueAtTime(0.45, t + delay + 0.008);
+        env2.gain.exponentialRampToValueAtTime(0.001, t + delay + dur * 0.85);
+        osc2.connect(env2); env2.connect(audioCtx.destination);
+        osc2.start(t + delay); osc2.stop(t + delay + dur + 0.02);
+    });
+}
+
+// Heller "Plopp" beim Zerplatzen einer Blase
+function ploppen() {
+    if (!audioCtx) return;
+    const t   = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const env = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(420, t);
+    osc.frequency.exponentialRampToValueAtTime(880, t + 0.07);
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(0.4, t + 0.008);
+    env.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    osc.connect(env); env.connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + 0.14);
+}
+
+// ── Groove-Instrumente (alle über masterGain → bleiben leise) ──────────────
+function kick(t) {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(130, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.95, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    o.connect(g); g.connect(masterGain);
+    o.start(t); o.stop(t + 0.2);
+}
+
+function rauschStimme(t, hz, typ, q, gain, dur) {
+    const src = audioCtx.createBufferSource(); src.buffer = rauschBuffer;
+    const f = audioCtx.createBiquadFilter();
+    f.type = typ; f.frequency.value = hz; if (q) f.Q.value = q;
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(masterGain);
+    src.start(t); src.stop(t + dur + 0.02);
+}
+
+function clap(t) {
+    [0, 0.012, 0.024].forEach((off, i) =>
+        rauschStimme(t + off, 1600, 'bandpass', 0.8, i < 2 ? 0.18 : 0.32, 0.10));
+}
+function hat(t) { rauschStimme(t, 7500, 'highpass', 0, 0.09, 0.035); }
+
+function bass(hz, t, dur) {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), lp = audioCtx.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(hz, t);
+    lp.type = 'lowpass'; lp.frequency.value = 430; lp.Q.value = 0.7;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(lp); lp.connect(g); g.connect(masterGain);
+    o.start(t); o.stop(t + dur + 0.02);
+}
+
+function pluck(hz, t) {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), lp = audioCtx.createBiquadFilter();
+    o.type = 'triangle'; o.frequency.setValueAtTime(hz, t);
+    lp.type = 'lowpass'; lp.frequency.value = 2200;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    o.connect(lp); lp.connect(g); g.connect(masterGain);
+    o.start(t); o.stop(t + 0.26);
+}
+
+function grooveSchedulieren() {
+    if (!audioCtx) return;
+    const bis = audioCtx.currentTime + 0.2;
+    while (naechsterStep < bis) {
+        const t    = naechsterStep;
+        const s    = musikStep % 16;
+        const takt = Math.floor(musikStep / 16) % TAKTE;
+        if (KICK[s]) { kick(t); bass(BASS_WURZEL[takt], t, STEP * 2); }
+        if (CLAP[s]) clap(t);
+        if (HAT[s])  hat(t);
+        if (MELODIE[s]) pluck(MELODIE[s], t);
+        naechsterStep += STEP;
+        musikStep = (musikStep + 1) % (16 * TAKTE);
+    }
+    setTimeout(grooveSchedulieren, 60);
+}
+
+// ── Spielzustand ───────────────────────────────────────────────────────────
+let zustand, punkte, ziel, blasen, partikel, spieler;
+let flashTimer     = 0;
+let letzterTreffer = '';
+let spawnTimer     = 0;
+let ansageTimer    = 0;   // bei 0 wird das Ziel (erneut) angesagt
+let weltX          = 0;   // Scroll-Offset (läuft auf)
+
+function mischen(a) {
+    const b = [...a];
+    for (let i = b.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [b[i], b[j]] = [b[j], b[i]];
+    }
+    return b;
+}
+
+let buchstabenSchlange = [];
+function schlangeNeuFuellen() { buchstabenSchlange = mischen([...ALPHABET]); }
+function naechsterBuchstabe() {
+    if (!buchstabenSchlange.length) schlangeNeuFuellen();
+    return buchstabenSchlange.pop();
+}
+
+function zielMarkieren() {
+    for (const b of blasen) { if (!b.weg) { b.istZiel = b.zeichen === ziel; b.leuchtet = b.istZiel; } }
+}
+
+function spielerErstellen() {
+    return { sy: 0, vy: 0, aufBoden: true, sprungUebrig: 0, beinPhase: 0, blink: 0, freudeT: 0 };
+}
+
+function spielStart() {
+    punkte     = 0;
+    blasen     = [];
+    partikel   = [];
+    spieler    = spielerErstellen();
+    flashTimer = 0;
+    spawnTimer = 14;
+    weltX      = 0;
+    schlangeNeuFuellen();
+    ziel = naechsterBuchstabe();
+    // Ansage synchron VOR musikStarten (Safari: speak()/Audio erst nach AudioContext blockiert)
+    buchstabeAnsagen(ziel);
+    ansageTimer = 420;
+    zustand = 'spielen';
+    musikStarten();
+}
+
+// ── Buchstabenblasen: fliegen von rechts herein ────────────────────────────
+function farbeFuer(z) { return FARBEN[ALPHABET.indexOf(z) % FARBEN.length]; }
+
+function blaseErzeugen(zeichen) {
+    blasen.push({
+        zeichen,
+        x        : W + BLASE_R + 12,
+        y        : BAND_MITTE + (Math.random() * 2 - 1) * BAND_STREU,
+        bobT     : Math.random() * Math.PI * 2,
+        istZiel  : zeichen === ziel,
+        farbe    : farbeFuer(zeichen),
+        leuchtet : zeichen === ziel,
+        glowT    : 0,
+        wackelT  : 0,
+        weg      : false
+    });
+}
+
+function aufSchirmZeichen() {
+    return new Set(blasen.filter(b => !b.weg).map(b => b.zeichen));
+}
+
+function blasenSpawnen() {
+    spawnTimer--;
+    if (spawnTimer > 0) return;
+    spawnTimer = 64 + Math.floor(Math.random() * 40);
+
+    const auf = aufSchirmZeichen();
+    let zeichen;
+    // Das Ziel muss immer wieder im Strom auftauchen, damit es fangbar bleibt
+    if (ziel && !auf.has(ziel) && Math.random() < 0.7) {
+        zeichen = ziel;
+    } else {
+        for (let i = 0; i < 6; i++) {
+            const z = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+            if (!auf.has(z)) { zeichen = z; break; }
+        }
+        if (!zeichen) zeichen = ziel || ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+    }
+    blaseErzeugen(zeichen);
+}
+
+function blasenBewegen() {
+    for (const b of blasen) {
+        if (b.weg) continue;
+        b.x     -= WELT_V;
+        b.bobT  += 0.05;
+        b.glowT += 0.06;
+        if (b.wackelT > 0) b.wackelT--;
+        if (b.x < -BLASE_R - 12) b.weg = true;
+    }
+    blasen = blasen.filter(b => !b.weg);
+}
+
+// Magischer Funkel-Sound beim Fangen – direkt an destination, bleibt gut hörbar
+function funkeln() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    [784, 1175, 1568].forEach((f, i) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(f, t + i * 0.05);
+        g.gain.setValueAtTime(0.0001, t + i * 0.05);
+        g.gain.exponentialRampToValueAtTime(0.3, t + i * 0.05 + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.05 + 0.22);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(t + i * 0.05); o.stop(t + i * 0.05 + 0.25);
+    });
+}
+
+// ── Partikel: modernes Konfetti (Kreise + rotierende Streifen) ─────────────
+const KONFETTI_FARBEN = ['#FF6B9D','#FFD34D','#5AC8FA','#7ED957','#B388FF','#FF9E5E'];
+function explosion(x, y, farbe, n = 18) {
+    for (let i = 0; i < n; i++) {
+        const a = (Math.PI * 2 * i / n) + Math.random() * 0.5;
+        const s = 3 + Math.random() * 5;
+        partikel.push({
+            x, y,
+            vx: Math.cos(a) * s, vy: Math.sin(a) * s - 2,
+            farbe: Math.random() < 0.5 ? farbe : KONFETTI_FARBEN[i % KONFETTI_FARBEN.length],
+            r: 4 + Math.random() * 6,
+            form: Math.random() < 0.45 ? 'streifen' : 'kreis',
+            rot: Math.random() * Math.PI, vrot: (Math.random() - 0.5) * 0.3,
+            leben: 1, abbau: 0.018 + Math.random() * 0.015
+        });
+    }
+}
+
+function partikelUpdate() {
+    for (const p of partikel) {
+        p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.leben -= p.abbau;
+        p.rot += p.vrot;
+    }
+    partikel = partikel.filter(p => p.leben > 0);
+}
+
+// ── Update ─────────────────────────────────────────────────────────────────
+function update() {
+    if (zustand !== 'spielen') return;
+
+    if (flashTimer > 0) flashTimer--;
+    weltX += WELT_V;
+
+    // Einhorn-Physik (konstanter Lauf, Hüpfen per Pfeil hoch)
+    spieler.vy += GRAV;
+    spieler.sy += spieler.vy;
+    if (spieler.sy >= 0) {
+        spieler.sy = 0; spieler.vy = 0; spieler.aufBoden = true; spieler.sprungUebrig = 0;
+    } else spieler.aufBoden = false;
+    spieler.beinPhase += 0.35;
+    spieler.blink = (spieler.blink + 1) % 200;
+    if (spieler.freudeT > 0) spieler.freudeT--;
+
+    blasenSpawnen();
+    blasenBewegen();
+    partikelUpdate();
+
+    // Horn-Kollision: nur die Zielblase ist „fangbar".
+    // Während des Jubels (flashTimer) pausiert das Fangen → keine Ketten-Treffer pro Sprung.
+    if (flashTimer === 0) {
+        for (const b of blasen) {
+            if (b.weg) continue;
+            const dx = hornWelt.x - b.x, dy = hornWelt.y - b.y;
+            if (dx * dx + dy * dy <= (BLASE_R + 16) * (BLASE_R + 16)) {
+                if (b.zeichen === ziel) { fangen(b); break; }
+                else if (b.wackelT === 0) b.wackelT = 18;   // falsche: nur kurz wackeln, keine Strafe
+            }
+        }
+    }
+
+    // Ziel ab und zu erneut ansagen (Erinnerung), aber nicht während des Jubels
+    if (flashTimer === 0 && ziel) {
+        ansageTimer--;
+        if (ansageTimer <= 0) { buchstabeAnsagen(ziel); ansageTimer = 420; }
+    }
+}
+
+function fangen(b) {
+    b.weg = true;
+    letzterTreffer = ziel;
+    punkte++;
+    explosion(b.x, b.y, b.farbe, 26);
+    ploppen();
+    funkeln();
+    spieler.freudeT = 28;
+    flashTimer = 60;
+    if (punkte >= ZIEL_PRO_LEVEL) {
+        zustand = 'gewonnen';
+        sprechen('Wahnsinn! Du hast alle Buchstaben gefangen!', 0.9, 1.55);
+        return;
+    }
+    superSprechen();
+    ziel = naechsterBuchstabe();   // neues Ziel; Ansage kommt direkt nach dem Jubel
+    zielMarkieren();
+    ansageTimer = 1;               // sobald flashTimer 0 ist, wird angesagt
+}
+
+// ── Eingabe: Pfeil hoch / Leertaste / Tippen = Hüpfen ──────────────────────
+function huepfen() {
+    if (zustand === 'start' || zustand === 'gewonnen') { spielStart(); return; }
+    if (zustand !== 'spielen') return;
+    if (spieler.aufBoden) {
+        spieler.vy = JUMP_V; spieler.aufBoden = false; spieler.sprungUebrig = 1;
+    } else if (spieler.sprungUebrig > 0) {
+        spieler.vy = JUMP_V * 0.85; spieler.sprungUebrig--;   // sanfter Doppelsprung
+    }
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowUp' || e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        huepfen();
+    }
+});
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); huepfen(); }, { passive: false });
+
+// ── Zeichnen-Hilfsfunktionen ───────────────────────────────────────────────
+function rundesRechteck(x, y, b, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + b - r, y);
+    ctx.quadraticCurveTo(x + b, y, x + b, y + r);
+    ctx.lineTo(x + b, y + h - r);
+    ctx.quadraticCurveTo(x + b, y + h, x + b - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
+// ── Hintergrund: Fantasy-Welt mit Parallax-Scrolling ───────────────────────
+const WOLKEN = [
+    { x:  90, y:  70, g: 1.0,  a: 0.8,  v: 0.6 },
+    { x: 340, y:  44, g: 0.7,  a: 0.7,  v: 0.9 },
+    { x: 560, y:  90, g: 0.85, a: 0.65, v: 0.7 },
+    { x: 740, y:  40, g: 0.55, a: 0.6,  v: 1.1 },
+];
+const STERNE = Array.from({ length: 26 }, (_, i) => ({
+    x: (i * 137) % W, y: 26 + (i * 53) % 250, r: 1.4 + (i % 3), ph: i * 1.7
+}));
+
+function regenbogen(cx, cy, r) {
+    const farben = ['#ff9ab5', '#ffc785', '#fff09a', '#a7e6a0', '#9fccf5', '#c6a8f0'];
+    ctx.lineWidth = 15;
+    ctx.globalAlpha = 0.45;
+    farben.forEach((f, i) => {
+        ctx.strokeStyle = f;
+        ctx.beginPath(); ctx.arc(cx, cy, r - i * 15, Math.PI, 0); ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+}
+
+function funkelSterne() {
+    for (const st of STERNE) {
+        const tw = 0.5 + 0.5 * Math.sin(st.ph + weltX * 0.03);
+        ctx.globalAlpha = 0.3 + tw * 0.55;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+}
+
+function huegelReihe(offset, baseY, w, h, farbe, period) {
+    ctx.fillStyle = farbe;
+    const off = ((offset % period) + period) % period;
+    for (let x = -off - period; x < W + period; x += period) {
+        ctx.beginPath();
+        ctx.ellipse(x + period / 2, baseY, w, h, 0, Math.PI, 0);
+        ctx.fill();
+    }
+}
+
+function hintergrundZeichnen() {
+    // Traumhimmel
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0,    '#b9a7ee');
+    g.addColorStop(0.45, '#f3b6d6');
+    g.addColorStop(0.8,  '#ffd6c0');
+    g.addColorStop(1,    '#ffe9d6');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    funkelSterne();
+    regenbogen(W * 0.5, GROUND + 40, 360);
+
+    // Wolken ziehen nach links (Lauf-Gefühl)
+    for (const w of WOLKEN) {
+        w.x -= w.v;
+        if (w.x < -140) w.x = W + 140;
+        wolkeZeichnen(w.x, w.y, w.g, w.a);
+    }
+
+    // Parallax-Hügel
+    huegelReihe(weltX * 0.25, GROUND + 46, 150, 70, '#caa9ea', 300);
+    huegelReihe(weltX * 0.5,  GROUND + 30, 120, 92, '#9ad7a3', 230);
+
+    // Boden
+    const bg = ctx.createLinearGradient(0, GROUND, 0, H);
+    bg.addColorStop(0, '#8fd47f'); bg.addColorStop(1, '#5fac63');
+    ctx.fillStyle = bg; ctx.fillRect(0, GROUND, W, H - GROUND);
+    ctx.fillStyle = '#7cc06e'; ctx.fillRect(0, GROUND, W, 6);
+
+    // Lauf-Streifen auf dem Boden
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    const sw = 80, off = weltX % sw;
+    for (let x = -off; x < W + sw; x += sw) {
+        ctx.beginPath();
+        ctx.moveTo(x, GROUND + 8); ctx.lineTo(x + 34, GROUND + 8);
+        ctx.lineTo(x + 12, H); ctx.lineTo(x - 22, H);
+        ctx.closePath(); ctx.fill();
+    }
+}
+
+function wolkeZeichnen(x, y, groesse, deckkraft) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(groesse, groesse);
+    ctx.fillStyle = `rgba(255,255,255,${deckkraft})`;
+    for (const [cx, cy, r] of [
+        [0,0,34],[30,-8,25],[-30,-5,23],[54,4,19],[-52,4,17],[18,-20,19],[-14,-18,17]
+    ]) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
+// ── Einhorn ────────────────────────────────────────────────────────────────
+const E = {
+    fell: '#fdf4ff', schatten: '#e9def4',
+    horn: '#ffd35c', hornDunkel: '#eaa92f',
+    auge: '#3a2b52', wange: '#ffb3c7', huf: '#cdb8ec'
+};
+const MAEHNE = ['#ff7eb6', '#ffae5d', '#ffe06b', '#7fd99a', '#74b9ff', '#bf94ff'];
+
+function beinZeichnen(hx, phase, jump) {
+    const swing = jump ? -0.7 : Math.sin(phase) * 0.7;
+    const footX = hx + Math.sin(swing) * 22;
+    const footY = 46 - Math.max(0, Math.cos(swing)) * 4 + (jump ? -10 : 0);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = E.fell; ctx.lineWidth = 11;
+    ctx.beginPath(); ctx.moveTo(hx, 8); ctx.lineTo(footX, footY); ctx.stroke();
+    ctx.strokeStyle = E.huf; ctx.lineWidth = 11;
+    ctx.beginPath(); ctx.moveTo(footX, footY - 5); ctx.lineTo(footX, footY); ctx.stroke();
+}
+
+function schweifZeichnen(phase) {
+    const sway = Math.sin(phase * 0.5) * 7;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < MAEHNE.length; i++) {
+        ctx.strokeStyle = MAEHNE[i]; ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.moveTo(-46, -10 + i * 3);
+        ctx.quadraticCurveTo(-76, 6 + i * 4 + sway, -64 - i * 2, 38 + i * 3 + sway);
+        ctx.stroke();
+    }
+}
+
+function maehneZeichnen() {
+    for (let i = 0; i < MAEHNE.length; i++) {
+        ctx.fillStyle = MAEHNE[i];
+        ctx.beginPath();
+        ctx.ellipse(34 - i * 3, -32 + i * 8, 8, 14, -0.5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function hornZeichnen() {
+    ctx.save();
+    ctx.translate(-2, -20);
+    ctx.rotate(0.12);
+    const grad = ctx.createLinearGradient(0, 4, 0, -42);
+    grad.addColorStop(0, E.hornDunkel); grad.addColorStop(1, E.horn);
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.moveTo(-6, 4); ctx.lineTo(6, 4); ctx.lineTo(0, -42); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = E.hornDunkel; ctx.lineWidth = 1.5;
+    for (let i = 0; i < 4; i++) {
+        const y = 0 - i * 10;
+        ctx.beginPath(); ctx.moveTo(-5 + i, y); ctx.lineTo(5 - i, y - 5); ctx.stroke();
+    }
+    // Welt-Position der Hornspitze (lokaler Punkt 0,-42) für die Kollision merken
+    const m = ctx.getTransform();
+    hornWelt = { x: m.c * (-42) + m.e, y: m.d * (-42) + m.f };
+    ctx.restore();
+}
+
+function spielerZeichnen() {
+    const feetY = GROUND + spieler.sy;
+    const jump  = spieler.sy < -2;
+    ctx.save();
+    ctx.translate(UX, feetY - 46);     // Körpermitte
+    const tilt = Math.max(-0.14, Math.min(0.05, spieler.vy * 0.006));
+    ctx.rotate(tilt);
+
+    schweifZeichnen(spieler.beinPhase);
+
+    // Hinterbeine
+    beinZeichnen(-30, spieler.beinPhase + Math.PI, jump);
+    beinZeichnen(-20, spieler.beinPhase, jump);
+
+    // Körper
+    ctx.fillStyle = E.fell;
+    ctx.beginPath(); ctx.ellipse(-2, 0, 50, 32, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = E.schatten;
+    ctx.beginPath(); ctx.ellipse(-2, 12, 44, 18, 0, 0, Math.PI); ctx.fill();
+
+    // Vorderbeine
+    beinZeichnen(20, spieler.beinPhase + Math.PI * 0.5, jump);
+    beinZeichnen(8,  spieler.beinPhase + Math.PI * 1.5, jump);
+
+    // Hals + Kopf
+    ctx.fillStyle = E.fell;
+    ctx.beginPath();
+    ctx.moveTo(24, -10);
+    ctx.quadraticCurveTo(50, -20, 50, -46);
+    ctx.lineTo(70, -44);
+    ctx.quadraticCurveTo(72, -14, 40, 4);
+    ctx.closePath(); ctx.fill();
+
+    ctx.save();
+    ctx.translate(58, -50);          // Kopfmitte
+    maehneZeichnen();
+    ctx.fillStyle = E.fell;
+    ctx.beginPath(); ctx.ellipse(0, 0, 24, 20, -0.12, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(16, 9, 13, 10, 0.18, 0, Math.PI * 2); ctx.fill();   // Schnauze
+    ctx.beginPath(); ctx.moveTo(-10, -14); ctx.lineTo(-4, -28); ctx.lineTo(4, -15); ctx.closePath(); ctx.fill();  // Ohr
+    ctx.fillStyle = E.schatten;
+    ctx.beginPath(); ctx.ellipse(23, 11, 2, 2.6, 0, 0, Math.PI * 2); ctx.fill();     // Nüster
+    ctx.fillStyle = E.wange; ctx.globalAlpha = 0.6;
+    ctx.beginPath(); ctx.arc(7, 7, 6, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+    if (spieler.blink > 190) {
+        ctx.strokeStyle = E.auge; ctx.lineWidth = 2; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(3, -3); ctx.lineTo(11, -3); ctx.stroke();
+    } else {
+        ctx.fillStyle = E.auge;
+        ctx.beginPath(); ctx.arc(8, -3, 4.2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(9.4, -4.4, 1.4, 0, Math.PI * 2); ctx.fill();
+    }
+    hornZeichnen();
+    ctx.restore();
+
+    ctx.restore();
+}
+
+// ── Blasen zeichnen ────────────────────────────────────────────────────────
+function blasenZeichnen() {
+    for (const b of blasen) {
+        if (b.weg) continue;
+        ctx.save();
+
+        // Wackeln nach falscher Berührung + sanftes Schweben
+        const wx  = b.wackelT > 0 ? Math.sin(b.wackelT * 0.9) * 5 : 0;
+        const bob = Math.sin(b.bobT) * 4;
+        ctx.translate(b.x + wx, b.y + bob);
+
+        // Moderner Flat-Look: satte Farbe, weicher Schatten, klare Schrift
+        if (b.leuchtet) {
+            ctx.shadowColor   = '#FFD700';
+            ctx.shadowBlur    = 30 + Math.sin(b.glowT) * 16;
+            ctx.shadowOffsetY = 0;
+        } else {
+            ctx.shadowColor   = 'rgba(30, 60, 95, 0.20)';
+            ctx.shadowBlur    = 16;
+            ctx.shadowOffsetY = 7;
+        }
+        ctx.fillStyle = b.farbe;
+        ctx.beginPath();
+        ctx.arc(0, 0, BLASE_R, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+
+        if (b.leuchtet) {
+            ctx.strokeStyle = `rgba(255,220,0,${0.7 + Math.sin(b.glowT) * 0.3})`;
+            ctx.lineWidth   = 6;
+        } else {
+            ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+            ctx.lineWidth   = 4;
+        }
+        ctx.stroke();
+
+        ctx.fillStyle    = 'white';
+        ctx.font         = (b.zeichen.length > 1 ? 'bold 38px ' : 'bold 54px ') + SCHRIFT;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(b.zeichen, 0, 3);
+        ctx.restore();
+    }
+}
+
+// ── HUD: helle Glas-Pills mit dunkler Schrift ──────────────────────────────
+function glasPill(x, y, b, h, r) {
+    ctx.shadowColor   = 'rgba(30, 60, 95, 0.16)';
+    ctx.shadowBlur    = 12;
+    ctx.shadowOffsetY = 4;
+    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    rundesRechteck(x, y, b, h, r);
+    ctx.fill();
+    ctx.shadowBlur    = 0;
+    ctx.shadowOffsetY = 0;
+}
+
+function anzeigeZeichnen() {
+    // Ziel-Buchstabe – große Pill oben Mitte
+    glasPill(W / 2 - 120, 12, 240, 84, 26);
+    ctx.fillStyle    = '#7a8aa0';
+    ctx.font         = 'bold 15px ' + SCHRIFT;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('Fang den Buchstaben', W / 2, 38);
+    ctx.fillStyle = '#ff5da2';
+    ctx.font      = 'bold 48px ' + SCHRIFT;
+    ctx.fillText(ziel || '', W / 2, 84);
+
+    // Fortschritt
+    glasPill(W - 150, 12, 138, 48, 24);
+    ctx.fillStyle    = '#33506e';
+    ctx.font         = 'bold 21px ' + SCHRIFT;
+    ctx.fillText(`⭐ ${punkte} / ${ZIEL_PRO_LEVEL}`, W - 81, 43);
+
+    // Hüpf-Hinweis (erste Runden)
+    if (punkte < 3) {
+        ctx.font = 'bold 15px ' + SCHRIFT;
+        const txt = '⬆️ Pfeiltaste nach oben zum Hüpfen!';
+        const tb = ctx.measureText(txt).width + 40;
+        glasPill(W / 2 - tb / 2, 108, tb, 34, 17);
+        ctx.fillStyle = '#c98a00';
+        ctx.fillText(txt, W / 2, 130);
+    }
+}
+
+// ── Flash-Overlay (nur bei Erfolg, kein rotes Schimpfen) ───────────────────
+function flashZeichnen() {
+    if (flashTimer <= 0) return;
+    const alpha = Math.min(1, flashTimer / 25) * 0.22;
+    ctx.fillStyle = `rgba(120,210,140,${alpha})`;
+    ctx.fillRect(0, 0, W, H);
+    if (flashTimer > 45) {
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor   = 'rgba(30,60,95,0.35)';
+        ctx.shadowBlur    = 18;
+        ctx.shadowOffsetY = 5;
+        ctx.font         = 'bold 68px ' + SCHRIFT;
+        ctx.fillStyle    = 'white';
+        ctx.fillText(`🦴 SUPER! 🦴`, W / 2, H / 2 - 18);
+        ctx.font         = 'bold 54px ' + SCHRIFT;
+        ctx.fillStyle    = '#ffd34d';
+        ctx.fillText(letzterTreffer, W / 2, H / 2 + 46);
+        ctx.shadowBlur    = 0;
+        ctx.shadowOffsetY = 0;
+    }
+}
+
+// ── Partikel ───────────────────────────────────────────────────────────────
+function partikelZeichnen() {
+    for (const p of partikel) {
+        ctx.save();
+        ctx.globalAlpha = p.leben;
+        ctx.fillStyle   = p.farbe;
+        if (p.form === 'streifen') {
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            rundesRechteck(-p.r, -p.r * 0.4, p.r * 2, p.r * 0.8, p.r * 0.3);
+            ctx.fill();
+        } else {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+}
+
+// ── Bildschirme: weiche Karte auf der Landschaft statt dunklem Overlay ─────
+function karteZeichnen(x, y, b, h) {
+    ctx.shadowColor   = 'rgba(30, 60, 95, 0.25)';
+    ctx.shadowBlur    = 36;
+    ctx.shadowOffsetY = 14;
+    ctx.fillStyle = 'rgba(255,255,255,0.94)';
+    rundesRechteck(x, y, b, h, 32);
+    ctx.fill();
+    ctx.shadowBlur    = 0;
+    ctx.shadowOffsetY = 0;
+}
+
+function knopfZeichnen(text, y, breite = 280) {
+    const x = W / 2 - breite / 2;
+    ctx.shadowColor   = 'rgba(233, 30, 140, 0.45)';
+    ctx.shadowBlur    = 20;
+    ctx.shadowOffsetY = 8;
+    const kg = ctx.createLinearGradient(0, y, 0, y + 64);
+    kg.addColorStop(0, '#ff7ab8');
+    kg.addColorStop(1, '#f0408f');
+    ctx.fillStyle = kg;
+    rundesRechteck(x, y, breite, 64, 32);
+    ctx.fill();
+    ctx.shadowBlur    = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.fillStyle    = 'white';
+    ctx.font         = 'bold 28px ' + SCHRIFT;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, W / 2, y + 33);
+    ctx.textBaseline = 'alphabetic';
+}
+
+function startbildschirmZeichnen() {
+    hintergrundZeichnen();
+    karteZeichnen(W / 2 - 300, 86, 600, 430);
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font         = '54px ' + SCHRIFT;
+    ctx.fillText('🦄', W / 2, 160);
+    ctx.fillStyle    = '#ff5da2';
+    ctx.font         = 'bold 44px ' + SCHRIFT;
+    ctx.fillText('Einhorn-Buchstaben!', W / 2, 218);
+    ctx.fillStyle    = '#33506e';
+    ctx.font         = '21px ' + SCHRIFT;
+    ctx.fillText('Das Einhorn rennt durch die Zauberwelt.', W / 2, 266);
+    ctx.fillText('Hüpf mit ⬆️ und fang mit dem Horn', W / 2, 296);
+    ctx.fillText('den Buchstaben, der gesagt wird!', W / 2, 326);
+    ctx.fillStyle    = '#7a8aa0';
+    ctx.font         = '17px ' + SCHRIFT;
+    ctx.fillText('Pfeil nach oben (oder tippen) = Hüpfen', W / 2, 366);
+    knopfZeichnen('LOS! 🦄', 396, 260);
+}
+
+function gewonnenZeichnen() {
+    hintergrundZeichnen();
+    karteZeichnen(W / 2 - 300, 92, 600, 416);
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font         = '54px ' + SCHRIFT;
+    ctx.fillText('🏆', W / 2, 168);
+    ctx.fillStyle    = '#ff5da2';
+    ctx.font         = 'bold 44px ' + SCHRIFT;
+    ctx.fillText('Geschafft!', W / 2, 226);
+    ctx.fillStyle    = '#33506e';
+    ctx.font         = '23px ' + SCHRIFT;
+    ctx.fillText('Du hast alle Buchstaben gefangen!', W / 2, 276);
+    ctx.font = '46px ' + SCHRIFT;
+    ctx.fillText('🦄✨🌈', W / 2, 348);
+    knopfZeichnen('Nochmal! 🦄', 388, 280);
+}
+
+// ── Hauptschleife ──────────────────────────────────────────────────────────
+zustand  = 'start';
+blasen   = [];
+partikel = [];
+spieler  = spielerErstellen();
+punkte   = 0;
+ziel     = '';
+
+function zeichnen() {
+    ctx.clearRect(0, 0, W, H);
+    if (zustand === 'start')    { startbildschirmZeichnen(); return; }
+    if (zustand === 'gewonnen') { gewonnenZeichnen();        return; }
+    hintergrundZeichnen();
+    blasenZeichnen();
+    spielerZeichnen();
+    partikelZeichnen();
+    anzeigeZeichnen();
+    flashZeichnen();
+}
+
+function schleife() { update(); zeichnen(); requestAnimationFrame(schleife); }
+schleife();
+</script>
+</body>
+</html>

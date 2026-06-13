@@ -21,6 +21,8 @@ for c, name in BUCHSTABEN_NAMEN.items():
     entries[f"finde_{c}"] = f"Finde {name}!"
     entries[f"hoppla_such_{c}"] = f"Hoppla! Such das {name}!"
     entries[f"nein_such_{c}"] = f"Nein! Such das {name}!"
+    # Nur der Buchstabe selbst – für das Einhorn-Spiel
+    entries[f"nur_{c}"] = f"{name}!"
 for n in range(21):
     entries[f"finde_{n}"] = f"Finde {n}!"
     entries[f"hoppla_such_{n}"] = f"Hoppla! Such die {n}!"
@@ -28,6 +30,7 @@ for n in range(21):
 entries["super"] = "Super!"
 entries["super_buchstaben_geschafft_jetzt_kommen_zahlen"] = "Super! Buchstaben geschafft! Jetzt kommen Zahlen!"
 entries["wahnsinn_du_hast_alle_zahlen_gefunden"] = "Wahnsinn! Du hast alle Zahlen gefunden!"
+entries["wahnsinn_du_hast_alle_buchstaben_gefangen"] = "Wahnsinn! Du hast alle Buchstaben gefangen!"
 entries["schade_versuch_es_nochmal"] = "Schade! Versuch es nochmal!"
 
 os.makedirs(OUT, exist_ok=True)
