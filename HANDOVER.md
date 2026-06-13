@@ -28,6 +28,18 @@ Der User (aaron@nabla.fi) baut Browser-Lernspiele für seine **5-jährige Tochte
 - Richtiges Tippen: Pop-Sound, Konfetti, Marshall-Freudenhüpfer + Bellen, "Super!"
 - **Level 1:** 15 Buchstaben → Level 2: 15 Zahlen (0–20)
 - HUD: `🦴 X / 15`
+- **Ziel-Auswahl (seit 2026-06-13):** Das Ziel ist ZUFÄLLIG eine der bereits sichtbaren Blasen
+  (`zielAusBlasen()`), nicht mehr die frisch gespawnte → vorher zu leicht. Blasen spawnen variierte,
+  doublettenfreie Zeichen (`naechstesFreiesZeichen()`); nach jedem Treffer / wenn das Ziel
+  ungetippt nach oben rausschwebt wird neu gewählt (`zielLeeren()` → `zielPending`). Erstes Ziel +
+  ein paar Startblasen werden in `spielStart()` synchron gesetzt (Safari: Ansage VOR `musikStarten`).
+
+### Design (beide Spiele, seit 2026-06-13)
+Modernes Kinder-Browsergame-Layout statt 90er-Look: weiche Pastell-Landschaft (driftende Wolken,
+Sonne mit Halo, runde Hügel), runde Schrift (`SCHRIFT`-Konstante), flache Blasen/Buchstaben mit
+weichem Schlagschatten, weiße Glas-Pills im HUD, Karten-Screens (`karteZeichnen`/`knopfZeichnen`)
+mit pinken Gradient-Buttons, Konfetti (Kreise + rotierende Streifen). Startseite = `start.html`
+(im Repo), auf dem Server als `index.html` deployt.
 
 ---
 
@@ -57,12 +69,16 @@ function sprechen(text, tempo = 0.82, tonhöhe = 1.25) {
 
 ### Web Audio API
 - `AudioContext` wird beim ersten User-Interaktion erstellt (Browser-Policy)
-- **Hintergrundmusik seit 2026-06-11: sehr dezente "Spieluhr"** (`SPIELUHR_NOTEN`/`spieluhrNote()`):
-  einzelne Sinus-Glöckchen (Grundton + leiser 3. Teilton, langes Ausklingen), C-Dur-Pentatonik,
-  54 BPM, viele Pausen, masterGain 0.07 — die alte Melodie+Bass+Akkorde-Version (108 BPM, 0.14)
-  war dem User zu aufdringlich
-- **Bellen** (`bellen()`): Sägezahn-Oszillator + Bandpass-Filter, 2 Bellen-Impulse
-- Bark-Volume bewusst lauter als Musik gesetzt
+- **Hintergrundmusik seit 2026-06-13: leiser, eigener Baile-Funk-Groove** (Drum-Machine aus
+  Oszillatoren + Rauschen): `KICK`/`CLAP`/`HAT`/`BASS_WURZEL`/`MELODIE`-Pattern (16tel, 4-Takt-Loop,
+  128 BPM) → `grooveSchedulieren()` mit `kick/clap/hat/bass/pluck`. Lautstärke zentral über
+  `MUSIK_LAUTSTAERKE` (0.06) am `masterGain`. **Wichtig:** ist eine EIGENE Komposition im Stil von
+  „No Batidão" — NICHT das Originalstück (Urheberrecht; das echte Lied darf nicht nachgebaut/
+  eingebettet werden, auch nicht privat). Wollte der User das echte Stück, müsste er selbst eine
+  Datei bereitstellen, die ihm gehört. Vorgänger: dezente „Spieluhr" (54 BPM), davor Melodie+Bass+
+  Akkorde (war zu aufdringlich).
+- **Bellen** (`bellen()`) + **Plopp** (`ploppen()`): hängen direkt an `audioCtx.destination` (NICHT
+  am `masterGain`) → bleiben in voller Lautstärke, unabhängig von der leisen Musik. Bark bewusst laut.
 - **Blasen-Optik (2026-06-11):** Der weiße **Lichtreflex** (Glanz-Verlauf + Glanzpunkt-Ellipse) auf
   den Blasen lag teils über dem Buchstaben → entfernt, Füllung jetzt dezenter Farbverlauf ohne Weiß.
   Der **goldene Ziel-Glow** (GLOW_UNTIL, erste 6 Runden) ist bewusst DRIN — der User wollte ihn

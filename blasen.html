@@ -123,22 +123,29 @@ function superSprechen() {
     sprechen('Super!', 0.9, 1.5);
 }
 
-// ── Hintergrundmusik: sehr dezente Spieluhr ────────────────────────────────
-// Einzelne, leise Glöckchen-Töne mit vielen Pausen (C-Dur-Pentatonik).
-// [Hz, Schläge] — Hz 0 = Pause.
-const SPIELUHR_NOTEN = [
-    [523.25,2],[659.25,2],[783.99,3],[0,1],
-    [880.00,2],[783.99,2],[659.25,3],[0,3],
-    [587.33,2],[659.25,2],[523.25,3],[0,1],
-    [440.00,2],[523.25,2],[392.00,3],[0,3],
-];
-const BPM   = 54;
-const SCHLAG = 60 / BPM;
+// ── Hintergrundmusik: dezenter Baile-Funk-Groove (eigene Komposition) ──────
+// Leiser, treibender Loop im brasilianischen Funk-Stil – komplett selbst
+// erzeugt (Drum-Machine aus Oszillatoren + Rauschen), KEIN Originalstück.
+const MUSIK_LAUTSTAERKE = 0.06;        // gesamte Musik leise im Hintergrund
+const BPM   = 128;
+const STEP  = 60 / BPM / 4;            // ein 16tel
+const TAKTE = 4;                       // 4-Takt-Schleife (64 Steps)
 
-let audioCtx     = null;
-let masterGain   = null;
-let melIdx = 0;
-let melZeit = 0;
+// Pattern pro 16tel (1 = Anschlag) – eigener „Tamborzão"-artiger Groove
+const KICK = [1,0,0,1, 0,0,1,0, 0,1,1,0, 0,0,1,0];
+const CLAP = [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0];
+const HAT  = [1,0,1,1, 0,1,1,0, 1,0,1,1, 0,1,1,0];
+const BASS_WURZEL = [110.00, 82.41, 98.00, 87.31];   // A2 · E2 · G2 · F2 (je Takt)
+const MELODIE = [   // A-Moll-Pentatonik-Motiv, 0 = Pause
+    0, 440.00, 0, 523.25, 0, 0, 392.00, 0,
+    440.00, 0, 0, 587.33, 0, 523.25, 0, 0
+];
+
+let audioCtx      = null;
+let masterGain    = null;
+let rauschBuffer  = null;
+let musikStep     = 0;
+let naechsterStep = 0;
 
 function musikStarten() {
     if (audioCtx) {
@@ -156,10 +163,16 @@ function musikStarten() {
 
     masterGain.connect(komp);
     komp.connect(audioCtx.destination);
-    masterGain.gain.setValueAtTime(0.07, audioCtx.currentTime);
+    masterGain.gain.value = MUSIK_LAUTSTAERKE;
 
-    melZeit = audioCtx.currentTime + 0.15;
-    musikSchedulieren();
+    // Rauschpuffer (für Clap & HiHat) einmalig erzeugen
+    rauschBuffer = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * 0.4), audioCtx.sampleRate);
+    const d = rauschBuffer.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+
+    musikStep     = 0;
+    naechsterStep = audioCtx.currentTime + 0.12;
+    grooveSchedulieren();
 }
 
 function bellen() {
@@ -211,34 +224,74 @@ function ploppen() {
     osc.start(t); osc.stop(t + 0.14);
 }
 
-// Glöckchen-Ton wie aus einer Spieluhr: schneller Anschlag, langes Ausklingen
-function spieluhrNote(hz, start) {
-    const dauer = 2.2;
-    [[hz, 0.10], [hz * 3, 0.018]].forEach(([f, v]) => {
-        const osc = audioCtx.createOscillator();
-        const env = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(f, start);
-        env.gain.setValueAtTime(0, start);
-        env.gain.linearRampToValueAtTime(v, start + 0.008);
-        env.gain.exponentialRampToValueAtTime(0.0001, start + dauer);
-        osc.connect(env); env.connect(masterGain);
-        osc.start(start);
-        osc.stop(start + dauer + 0.05);
-    });
+// ── Groove-Instrumente (alle über masterGain → bleiben leise) ──────────────
+function kick(t) {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(130, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.95, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    o.connect(g); g.connect(masterGain);
+    o.start(t); o.stop(t + 0.2);
 }
 
-function musikSchedulieren() {
-    if (!audioCtx) return;
-    const bis = audioCtx.currentTime + 0.6;
+function rauschStimme(t, hz, typ, q, gain, dur) {
+    const src = audioCtx.createBufferSource(); src.buffer = rauschBuffer;
+    const f = audioCtx.createBiquadFilter();
+    f.type = typ; f.frequency.value = hz; if (q) f.Q.value = q;
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(masterGain);
+    src.start(t); src.stop(t + dur + 0.02);
+}
 
-    while (melZeit < bis) {
-        const [hz, s] = SPIELUHR_NOTEN[melIdx];
-        if (hz) spieluhrNote(hz, melZeit);
-        melZeit += s * SCHLAG;
-        melIdx   = (melIdx + 1) % SPIELUHR_NOTEN.length;
+function clap(t) {
+    [0, 0.012, 0.024].forEach((off, i) =>
+        rauschStimme(t + off, 1600, 'bandpass', 0.8, i < 2 ? 0.18 : 0.32, 0.10));
+}
+function hat(t) { rauschStimme(t, 7500, 'highpass', 0, 0.09, 0.035); }
+
+function bass(hz, t, dur) {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), lp = audioCtx.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(hz, t);
+    lp.type = 'lowpass'; lp.frequency.value = 430; lp.Q.value = 0.7;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(lp); lp.connect(g); g.connect(masterGain);
+    o.start(t); o.stop(t + dur + 0.02);
+}
+
+function pluck(hz, t) {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain(), lp = audioCtx.createBiquadFilter();
+    o.type = 'triangle'; o.frequency.setValueAtTime(hz, t);
+    lp.type = 'lowpass'; lp.frequency.value = 2200;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    o.connect(lp); lp.connect(g); g.connect(masterGain);
+    o.start(t); o.stop(t + 0.26);
+}
+
+function grooveSchedulieren() {
+    if (!audioCtx) return;
+    const bis = audioCtx.currentTime + 0.2;
+    while (naechsterStep < bis) {
+        const t    = naechsterStep;
+        const s    = musikStep % 16;
+        const takt = Math.floor(musikStep / 16) % TAKTE;
+        if (KICK[s]) { kick(t); bass(BASS_WURZEL[takt], t, STEP * 2); }
+        if (CLAP[s]) clap(t);
+        if (HAT[s])  hat(t);
+        if (MELODIE[s]) pluck(MELODIE[s], t);
+        naechsterStep += STEP;
+        musikStep = (musikStep + 1) % (16 * TAKTE);
     }
-    setTimeout(musikSchedulieren, 250);
+    setTimeout(grooveSchedulieren, 60);
 }
 
 // ── Spielzustand ───────────────────────────────────────────────────────────
