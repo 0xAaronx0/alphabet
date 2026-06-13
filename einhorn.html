@@ -322,6 +322,7 @@ let weltX          = 0;   // Scroll-Offset (läuft auf)
 let level          = 1;   // 1 = einzelne Buchstaben, 2 = Wörter
 let wortIndex      = 0;   // aktuelles Wort in Level 2
 let gebaut         = '';  // bisher gefangene Buchstaben des Wortes
+let wortFertigPending = false; // nach dem Jubel zum nächsten Wort wechseln
 
 // Level 2: kurze Wörter mit Bild (Emoji)
 const WOERTER = [
@@ -391,15 +392,24 @@ function level2Starten() {
     level      = 2;
     wortIndex  = 0;
     gebaut     = '';
+    wortFertigPending = false;
     blasen     = [];
     partikel   = [];
     spieler    = spielerErstellen();
     flashTimer = 0;
     spawnTimer = 14;
-    naechstesZiel();
-    buchstabeAnsagen(ziel);   // Audio ist seit Level 1 entsperrt
-    ansageTimer = 420;
+    wortStarten();            // sagt zuerst das ganze Wort an, dann den ersten Buchstaben
     zustand = 'spielen';
+}
+
+// Neues Wort beginnen: erst das WORT ansagen, dann (verzögert) den ersten Buchstaben.
+function wortStarten() {
+    gebaut = '';
+    naechstesZiel();          // erster fehlender Buchstabe des Wortes
+    zielMarkieren();
+    const wort = WOERTER[wortIndex].wort;
+    clipAnsage('wort_' + audioSchluessel(wort), wort, 0.92, 1.3);  // ganzes Wort zuerst
+    ansageTimer = 90;         // ~1,5 s später kommt der erste Buchstabe
 }
 
 // ── Buchstabenblasen: fliegen von rechts herein ────────────────────────────
@@ -532,6 +542,18 @@ function update() {
         }
     }
 
+    // Level 2: nach dem Jubel zum nächsten Wort (das Wort wird zuerst angesagt)
+    if (wortFertigPending && flashTimer === 0) {
+        wortFertigPending = false;
+        wortIndex++;
+        if (wortIndex >= WOERTER.length) {
+            zustand = 'gewonnen';
+            clipAnsage('wahnsinn_du_hast_alle_woerter_geschafft', 'Wahnsinn! Du hast alle Wörter geschafft!', 0.9, 1.5);
+            return;
+        }
+        wortStarten();
+    }
+
     // Ziel ab und zu erneut ansagen (Erinnerung), aber nicht während des Jubels
     if (flashTimer === 0 && ziel) {
         ansageTimer--;
@@ -565,22 +587,12 @@ function fangen(b) {
     // Level 2: gefangenen Buchstaben ans Wort anhängen
     gebaut += ziel;
     const wort = WOERTER[wortIndex].wort;
-    if (gebaut.length >= wort.length) {        // Wort fertig!
-        letzterTreffer = wort;
-        wortIndex++;
-        gebaut = '';
-        if (wortIndex >= WOERTER.length) {     // alle Wörter geschafft
-            zustand = 'gewonnen';
-            clipAnsage('wahnsinn_du_hast_alle_woerter_geschafft', 'Wahnsinn! Du hast alle Wörter geschafft!', 0.9, 1.5);
-            return;
-        }
-        clipAnsage('wort_' + audioSchluessel(wort), wort, 0.92, 1.3);  // fertiges Wort vorlesen
-        naechstesZiel();
-        zielMarkieren();
-        ansageTimer = 80;                      // kurz warten – das Wort wird vorgelesen
+    superSprechen();
+    if (gebaut.length >= wort.length) {        // Wort fertig (bleibt im Bild stehen)!
+        letzterTreffer = '';                   // Flash zeigt nur „SUPER!", das Wort steht oben links
+        wortFertigPending = true;              // nach dem Jubel kommt das nächste Wort
     } else {
         letzterTreffer = ziel;
-        superSprechen();
         naechstesZiel();
         zielMarkieren();
         ansageTimer = 1;
@@ -932,16 +944,14 @@ function glasPill(x, y, b, h, r) {
 }
 
 function anzeigeZeichnen() {
-    // Ziel-Buchstabe – große Pill oben Mitte
-    glasPill(W / 2 - 120, 12, 240, 84, 26);
-    ctx.fillStyle    = '#7a8aa0';
-    ctx.font         = 'bold 15px ' + SCHRIFT;
+    // Hör-Hinweis (der gesuchte Buchstabe wird NUR gesprochen, nicht gezeigt)
+    glasPill(W / 2 - 120, 12, 240, 56, 26);
+    ctx.fillStyle    = '#33506e';
+    ctx.font         = 'bold 23px ' + SCHRIFT;
     ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🔊 Hör gut zu!', W / 2, 41);
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Fang den Buchstaben', W / 2, 38);
-    ctx.fillStyle = '#ff5da2';
-    ctx.font      = 'bold 48px ' + SCHRIFT;
-    ctx.fillText(ziel || '', W / 2, 84);
 
     // Fortschritt (rechts)
     glasPill(W - 150, 12, 138, 48, 24);

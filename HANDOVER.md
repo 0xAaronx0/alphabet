@@ -46,10 +46,13 @@ Auf dem Server `einhorn.html`.
 - **Level 1** (`level===1`): 15 einzelne Buchstaben fangen → `zustand='levelzwischen'` (Übergangs-Screen)
   → `level2Starten()`.
 - **Level 2** (`level===2`): 4 kurze Wörter buchstabieren (`WOERTER` = HAUS/MAUS/WURM/BAUM mit Emoji-Bild).
-  `naechstesZiel()` liefert den nächsten fehlenden Buchstaben (`WOERTER[wortIndex].wort[gebaut.length]`);
+  Jedes Wort startet mit `wortStarten()`: sagt ZUERST das ganze Wort an (`wort_<x>.mp3`), dann (über
+  `ansageTimer`≈90) den ersten Buchstaben. `naechstesZiel()` liefert den nächsten fehlenden Buchstaben;
   gefangene Buchstaben sammeln sich in `gebaut` und werden oben links als Wort-Baukasten gezeigt
-  (Bild + Buchstaben + `_`-Slots, `anzeigeZeichnen`). Wort fertig → Wort-Clip `wort_<x>.mp3`, nächstes
-  Wort; nach 4 Wörtern → `gewonnen`.
+  (Bild + Buchstaben + `_`-Slots, `anzeigeZeichnen`). Wort komplett → `wortFertigPending`, nach dem
+  Jubel (`update`) nächstes Wort (wieder Wort-zuerst) bzw. nach 4 Wörtern → `gewonnen`.
+- **Der gesuchte Buchstabe wird NICHT angezeigt** (nur gesprochen): die Mitte-Pill zeigt „🔊 Hör gut zu!".
+  In Level 2 zeigt der Wort-Baukasten oben links nur die schon GEFANGENEN Buchstaben (+ `_`-Slots).
 - **Goldener Glow (`glowAktiv()`):** Level 1 nur die ersten 6 Treffer (`punkte<6`); Level 2 nur beim
   ersten Wort (`wortIndex===0`). Danach muss das Kind die richtige Blase selbst finden. `glowAktiv()`
   steuert `leuchtet` in `blaseErzeugen` UND `zielMarkieren`.
@@ -160,8 +163,14 @@ Setup (gleiches Muster wie `cruise-map`/`nabla-dashboard` auf dem KiteScout-VPS)
   - `gen_audio.py` erzeugt sie neu: `uv run --with edge-tts python gen_audio.py`
   - **Buchstaben werden ausgeschrieben** in `BUCHSTABEN_NAMEN` — einzelne Großbuchstaben las die
     TTS teils englisch ("find i"); ACHTUNG: "Ix" wird als römische Zahl IX ("neun") gelesen → "Iks"!
-    Aussprache 2026-06-14 geschärft: Vokale verlängert (U="Uuh" sonst wie O, A="Aah"), Konsonanten
-    verdoppelt (L="Ell", M/N/R/S="Emm/Enn/Err/Ess"). Beim Ändern Clips löschen + neu erzeugen.
+    Aussprache mehrfach geschärft. Erkenntnisse (per Whisper-Vergleich über mehrere Stimmen, da man
+    Einzel-Clips nicht zuverlässig automatisch prüfen kann — Methode: Kandidaten erzeugen, mit
+    `faster-whisper` language="de" transkribieren, klarste Schreibweise/Stimme wählen):
+    • **L:** Amala spricht L undeutlich (klingt wie „Ja") → `VOICE_OVERRIDE = {"l": Katja}` (Katja sagt klar „El").
+    • **J:** „Jott" klingt wie „Tschüss" → `"Jot"` (klar).
+    • **U:** „Uuh"/„Uh" klingt wie „O" → `"Uu"` (klar als U).
+    • Sonst: Vokale verlängert (A="Aah"), Konsonanten verdoppelt (M/N/R/S/Ell). `VOICE_OVERRIDE` erlaubt
+      pro Buchstabe eine andere Stimme. Beim Ändern betroffene Clips löschen + neu erzeugen.
   - **Level-2-Clips:** `wort_<haus|maus|wurm|baum>.mp3` (Wort vorlesen) + `super_jetzt_kommen_woerter`
     + `wahnsinn_du_hast_alle_woerter_geschafft`. Insgesamt 178 Clips.
   - **Hinweis:** Aussprache kann nur der Mensch final beurteilen (Whisper hört Einzel-Clips falsch) —

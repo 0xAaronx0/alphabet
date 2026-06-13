@@ -2,6 +2,9 @@ import asyncio, os, sys
 import edge_tts
 
 VOICE = "de-DE-AmalaNeural"
+# Amala spricht das „L" undeutlich (klingt wie „Ja") → für L die klarere Katja-Stimme.
+# (per-Buchstabe-Override, von Whisper-Vergleich über mehrere Stimmen bestätigt)
+VOICE_OVERRIDE = { "l": "de-DE-KatjaNeural" }
 RATE = "-12%"
 OUT = "audio"
 
@@ -11,10 +14,11 @@ OUT = "audio"
 # damit z. B. L klar nach L klingt und U nicht mit O verwechselt wird.
 BUCHSTABEN_NAMEN = {
     "a": "Aah", "b": "Beh", "c": "Zeh", "d": "Deh", "e": "Eh",  "f": "Eff",
-    "g": "Geh", "h": "Hah", "i": "Ieh", "j": "Jott","k": "Kah", "l": "Ell",
+    "g": "Geh", "h": "Hah", "i": "Ieh", "j": "Jot", "k": "Kah", "l": "Ell",
     "m": "Emm", "n": "Enn", "o": "Oh",  "p": "Peh", "q": "Kuh", "r": "Err",
-    # "Ix" wuerde als roemische Zahl IX ("neun") gelesen — deshalb "Iks"
-    "s": "Ess", "t": "Teh", "u": "Uuh", "v": "Fau", "w": "Weh", "x": "Iks",
+    # "Ix" wuerde als roemische Zahl IX ("neun") gelesen — deshalb "Iks";
+    # "Jott" wird teils als "Tschüss/Tschööt" gelesen → "Jot" (klar als "Jot")
+    "s": "Ess", "t": "Teh", "u": "Uu",  "v": "Fau", "w": "Weh", "x": "Iks",
     "y": "Ypsilon", "z": "Zett",
 }
 
@@ -22,12 +26,15 @@ BUCHSTABEN_NAMEN = {
 WOERTER = ["Haus", "Maus", "Wurm", "Baum"]
 
 entries = {}
+entry_voice = {}   # key -> Stimme (Standard: VOICE)
 for c, name in BUCHSTABEN_NAMEN.items():
-    entries[f"finde_{c}"] = f"Finde {name}!"
-    entries[f"hoppla_such_{c}"] = f"Hoppla! Such das {name}!"
-    entries[f"nein_such_{c}"] = f"Nein! Such das {name}!"
-    # Nur der Buchstabe selbst – für das Einhorn-Spiel
-    entries[f"nur_{c}"] = f"{name}!"
+    keys = [f"finde_{c}", f"hoppla_such_{c}", f"nein_such_{c}", f"nur_{c}"]
+    entries[keys[0]] = f"Finde {name}!"
+    entries[keys[1]] = f"Hoppla! Such das {name}!"
+    entries[keys[2]] = f"Nein! Such das {name}!"
+    entries[keys[3]] = f"{name}!"   # nur der Buchstabe – fürs Einhorn-Spiel
+    if c in VOICE_OVERRIDE:
+        for k in keys: entry_voice[k] = VOICE_OVERRIDE[c]
 for n in range(21):
     entries[f"finde_{n}"] = f"Finde {n}!"
     entries[f"hoppla_such_{n}"] = f"Hoppla! Such die {n}!"
@@ -50,10 +57,11 @@ async def gen(key, text):
     path = os.path.join(OUT, key + ".mp3")
     if os.path.exists(path) and os.path.getsize(path) > 1000:
         return
+    voice = entry_voice.get(key, VOICE)
     async with sem:
         for attempt in range(3):
             try:
-                await edge_tts.Communicate(text, VOICE, rate=RATE).save(path)
+                await edge_tts.Communicate(text, voice, rate=RATE).save(path)
                 if os.path.getsize(path) > 1000:
                     return
             except Exception as e:
