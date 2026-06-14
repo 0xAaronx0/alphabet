@@ -801,7 +801,7 @@ const FLIEGER = [
 ];
 const MID_V        = WELT_V * 0.6;          // langsamer als Einhorn, schneller als Hügel
 const HILL_DEKO_V  = WELT_V * HUEGEL_NAH_F; // exakt Tempo der nahen Hügel
-const DEKO_ALPHA   = 0.97;                  // praktisch deckend, nur minimal durchscheinend
+const DEKO_ALPHA   = 0.9;                   // 90% – via drawImage in allen Browsern gleich
 const zufEm = a => a[Math.floor(Math.random() * a.length)];
 
 // Midground: Bäume/Tiere am Boden (Horizont), eigene Ebene vor den Hügeln
@@ -823,12 +823,38 @@ function midBewegen() {
     for (const d of midDeko) d.x -= MID_V;
     midDeko = midDeko.filter(d => d.x > -100);
 }
+// ── Deko-Sprites: Emoji einmal vorrendern, dann per drawImage blitten ──────
+// fillText(emoji)+globalAlpha rendert je nach Browser unterschiedlich blass
+// (Chrome zu durchsichtig). drawImage eines Offscreen-Canvas ist überall gleich
+// deckend UND deutlich schneller (kein per-Frame Text/Schatten → bessere fps).
+const _spriteCache = new Map();
+function dekoSprite(em, size, mode) {
+    const key = mode + '|' + em + '|' + size;
+    let s = _spriteCache.get(key);
+    if (s) return s;
+    const pad = 12;
+    const c = document.createElement('canvas');
+    c.width  = Math.ceil(size * 1.8) + pad * 2;
+    c.height = Math.ceil(size * 1.8) + pad * 2;
+    const g = c.getContext('2d');
+    g.textAlign = 'center';
+    g.font = size + 'px ' + SCHRIFT;
+    g.shadowColor = 'rgba(25,25,50,0.9)'; g.shadowBlur = 4; g.shadowOffsetY = 1;  // Umriss eingebacken
+    let ay;
+    if (mode === 'boden') { g.textBaseline = 'alphabetic'; ay = c.height - pad - Math.round(size * 0.22); }
+    else                  { g.textBaseline = 'middle';     ay = Math.round(c.height / 2); }
+    g.fillText(em, c.width / 2, ay);
+    s = { canvas: c, ax: c.width / 2, ay };
+    _spriteCache.set(key, s);
+    return s;
+}
+
 function midZeichnen() {
-    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
     ctx.globalAlpha = DEKO_ALPHA;
-    ctx.shadowColor = 'rgba(25,25,50,1)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 1;
-    for (const d of midDeko) { ctx.font = d.size + 'px ' + SCHRIFT; ctx.fillText(d.em, d.x, GROUND + 4); }
-    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    for (const d of midDeko) {
+        const s = dekoSprite(d.em, Math.round(d.size), 'boden');
+        ctx.drawImage(s.canvas, d.x - s.ax, (GROUND + 4) - s.ay);
+    }
     ctx.globalAlpha = 1;
 }
 
@@ -851,14 +877,11 @@ function hillBewegen() {
     hillDeko = hillDeko.filter(d => d.x > -110);
 }
 function hillZeichnen() {
-    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
     ctx.globalAlpha = DEKO_ALPHA;
-    ctx.shadowColor = 'rgba(25,25,50,1)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 1;
     for (const d of hillDeko) {
-        ctx.font = d.size + 'px ' + SCHRIFT;
-        ctx.fillText(d.em, d.x, huegelObenNah(d.x) + d.sink);   // auf der echten Hügel-Oberfläche
+        const s = dekoSprite(d.em, Math.round(d.size), 'boden');
+        ctx.drawImage(s.canvas, d.x - s.ax, (huegelObenNah(d.x) + d.sink) - s.ay);
     }
-    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
     ctx.globalAlpha = 1;
 }
 
@@ -884,27 +907,19 @@ function fliegerBewegen() {
     flieger = flieger.filter(f => f.x < W + 70 && f.y > -70);
 }
 function fliegerZeichnen() {
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.globalAlpha = DEKO_ALPHA;
-    ctx.shadowColor = 'rgba(25,25,50,1)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 1;
     for (const f of flieger) {
+        const s = dekoSprite(f.em, Math.round(f.size), 'luft');
+        let sx, sy;   // gespiegelt → Kopf in Flugrichtung; Flügelschlag je nach Typ
+        if (f.typ === 'w') { const flap = 0.55 + 0.45 * Math.abs(Math.cos(f.flapT)); sx = -flap; sy = 1; }
+        else               { const flap = 0.85 + 0.15 * Math.abs(Math.cos(f.flapT)); sx = -1;    sy = flap; }
         ctx.save();
         ctx.translate(f.x, f.y);
-        // gespiegelt (scale x negativ) → Kopf zeigt in Flugrichtung nach rechts
-        if (f.typ === 'w') {                                   // Flügel seitlich: horizontaler Schlag
-            const flap = 0.55 + 0.45 * Math.abs(Math.cos(f.flapT));
-            ctx.scale(-flap, 1);
-        } else {                                               // Vogel/Biene: ganzer Körper, leichtes Auf/Ab
-            const flap = 0.85 + 0.15 * Math.abs(Math.cos(f.flapT));
-            ctx.scale(-1, flap);
-        }
-        ctx.font = f.size + 'px ' + SCHRIFT;
-        ctx.fillText(f.em, 0, 0);
+        ctx.scale(sx, sy);
+        ctx.drawImage(s.canvas, -s.ax, -s.ay);
         ctx.restore();
     }
-    ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
-    ctx.textBaseline = 'alphabetic';
 }
 
 // ── Einhorn (niedlicher Chibi-Stil) ─────────────────────────────────────────
