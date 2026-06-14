@@ -1328,8 +1328,21 @@ function zeichnen() {
     flashZeichnen();
 }
 
-function schleife() { update(); zeichnen(); requestAnimationFrame(schleife); }
-schleife();
+// Fester Zeit-Schritt: die Spiel-Logik läuft immer mit 60 Updates/Sekunde,
+// unabhängig von der Bildrate. So rennt das Einhorn überall gleich schnell –
+// auch wenn ein Gerät (z. B. iPad-Safari) mal nicht volle 60 fps schafft.
+const STEP_MS = 1000 / 60;
+let _akku = 0, _letzteZeit = 0;
+function schleife(ts) {
+    if (!_letzteZeit) _letzteZeit = ts;
+    _akku += Math.min(ts - _letzteZeit, 250);   // Sprünge (Tab-Wechsel) deckeln
+    _letzteZeit = ts;
+    let n = 0;
+    while (_akku >= STEP_MS && n < 5) { update(); _akku -= STEP_MS; n++; }
+    zeichnen();
+    requestAnimationFrame(schleife);
+}
+requestAnimationFrame(schleife);
 </script>
 </body>
 </html>
