@@ -57,6 +57,27 @@ for w in WOERTER:
 entries["super_jetzt_kommen_woerter"] = "Super! Jetzt suchen wir Wörter!"
 entries["wahnsinn_du_hast_alle_woerter_geschafft"] = "Wahnsinn! Du hast alle Wörter geschafft!"
 
+# Level 3 (Einhorn/Biene): englische Begriffe, auf Englisch angesagt.
+# Stimmen-Wahl per Whisper-Vergleich (Jenny/Ana/Sonia, language="en"):
+# Jenny 22/26 exakt (bee→"B" und eye→"I" sind Homophone, also korrekt);
+# "book" und "moon" sind bei Jenny unklar ("Buck"/"Man") → Sonia (exakt).
+ENGLISCH_VOICE = "en-US-JennyNeural"
+ENGLISCH_OVERRIDE = {
+    "book": "en-GB-SoniaNeural",
+    "moon": "en-GB-SoniaNeural",
+}
+# ("bee"/"tree" bewusst nicht: Biene/Bäume sind im Spiel Deko bzw. Spielfigur)
+ENGLISCH = ["hand", "finger", "ear", "eye", "house", "nose", "mouth", "foot",
+            "dog", "cat", "sun", "moon", "star", "car", "ball",
+            "fish", "apple", "duck", "heart", "boat", "frog", "cake",
+            "book", "shoe"]
+for w in ENGLISCH:
+    k = f"englisch_{w}"
+    entries[k] = f"{w}!"
+    entry_voice[k] = ENGLISCH_OVERRIDE.get(w, ENGLISCH_VOICE)
+entries["toll_jetzt_auf_englisch"] = "Toll! Jetzt auf Englisch! Hör zu und fang das richtige Bild!"
+entries["wahnsinn_du_kannst_schon_englisch"] = "Wahnsinn! Du kannst schon Englisch!"
+
 os.makedirs(OUT, exist_ok=True)
 sem = asyncio.Semaphore(6)
 

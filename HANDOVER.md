@@ -42,24 +42,34 @@ Boden). Oben fliegen Buchstabenblasen von rechts herein. **Pfeil hoch / Leertast
 Buchstabe** (z. B. „Zett") über `audio/nur_<x>.mp3` (`buchstabeAnsagen`→`clipAnsage`).
 Auf dem Server `einhorn.html`.
 
-**Zwei Level (seit 2026-06-14):**
-- **Level 1** (`level===1`): 15 einzelne Buchstaben fangen → `zustand='levelzwischen'` (Übergangs-Screen)
-  → `level2Starten()`.
-- **Level 2** (`level===2`): 4 kurze Wörter buchstabieren. **Vorrat `WORT_VORRAT` = 18 Wörter** mit
+**Drei Level (10/3/10 seit 2026-06-20; gilt genauso für `biene.html`):**
+- **Level 1** (`level===1`): 10 einzelne Buchstaben fangen (`ZIEL_PRO_LEVEL=10`)
+  → `zustand='levelzwischen'` (Übergangs-Screen) → `level2Starten()`.
+- **Level 2** (`level===2`): 3 kurze Wörter buchstabieren. **Vorrat `WORT_VORRAT` = 18 Wörter** mit
   Emoji (nur A–Z, keine Umlaute/ß – sonst fehlt der Buchstaben-Clip). Pro Spiel wählt `woerterWaehlen()`
-  4 davon → `WOERTER` (in `spielStart` gesetzt); **höchstens 2 wie im vorigen Spiel** (`letzteWoerter`).
+  3 davon → `WOERTER` (in `spielStart` gesetzt); **höchstens 2 wie im vorigen Spiel** (`letzteWoerter`).
   Jedes Wort braucht `audio/wort_<wort>.mp3` (alle 18 via `gen_audio.py` erzeugt). Beim Erweitern des
   Vorrats: Wort-Clip mit erzeugen.
   Jedes Wort startet mit `wortStarten()`: sagt ZUERST das ganze Wort an (`wort_<x>.mp3`), dann (über
   `ansageTimer`≈90) den ersten Buchstaben. `naechstesZiel()` liefert den nächsten fehlenden Buchstaben;
   gefangene Buchstaben sammeln sich in `gebaut` und werden oben links als Wort-Baukasten gezeigt
   (Bild + Buchstaben + `_`-Slots, `anzeigeZeichnen`). Wort komplett → `wortFertigPending`, nach dem
-  Jubel (`update`) nächstes Wort (wieder Wort-zuerst) bzw. nach 4 Wörtern → `gewonnen`.
+  Jubel (`update`) nächstes Wort (wieder Wort-zuerst) bzw. nach 3 Wörtern → `zustand='levelzwischen2'`.
+- **Level 3** (`level===3`, seit 2026-06-20): **Englische Begriffe.** Vorrat `ENGLISCH_VORRAT` =
+  24 Wort+Emoji-Paare (hand ✋, ear 👂, house 🏠 …; OHNE bee/tree — Biene/Bäume sind im Spiel
+  Deko bzw. Spielfigur, das angesagte Wort hätte sonst mehrere Bilder). `spielStart()` mischt und
+  nimmt `ZIEL_PRO_LEVEL3=10` davon → `ENGLISCH` (Ziel-Reihenfolge; `punkte` ist zugleich der
+  Index; schon in spielStart, damit der Zwischenscreen die ECHTEN ersten 4 Bilder zeigen kann).
+  Das Wort wird auf ENGLISCH angesagt (`audio/englisch_<wort>.mp3`, en-US-Jenny; `book`/`moon`
+  via en-GB-Sonia — Whisper-verifiziert), die Blasen zeigen Emoji-BILDER (`zeichenPool()` liefert
+  in Level 3 die Emoji statt `ALPHABET`), gefangen wird das passende Bild. Nach 10 → `gewonnen`
+  (`wahnsinn_du_kannst_schon_englisch.mp3`). Zwischen-Ansage: `toll_jetzt_auf_englisch.mp3`.
+  Kein `superSprechen()` pro Fang (nur Jubel-Flash/Konfetti), Ansage-Wiederholung via `zielAnsagen()`.
 - **Der gesuchte Buchstabe wird NICHT angezeigt** (nur gesprochen): die Mitte-Pill zeigt „🔊 Hör gut zu!".
   In Level 2 zeigt der Wort-Baukasten oben links nur die schon GEFANGENEN Buchstaben (+ `_`-Slots).
 - **Goldener Glow (`glowAktiv()`):** Level 1 nur die ersten 6 Treffer (`punkte<6`); Level 2 nur beim
-  ersten Wort (`wortIndex===0`). Danach muss das Kind die richtige Blase selbst finden. `glowAktiv()`
-  steuert `leuchtet` in `blaseErzeugen` UND `zielMarkieren`.
+  ersten Wort (`wortIndex===0`); Level 3 nur die ersten 2 Begriffe (`punkte<2`). Danach muss das Kind
+  die richtige Blase selbst finden. `glowAktiv()` steuert `leuchtet` in `blaseErzeugen` UND `zielMarkieren`.
 
 Schlüssel-Details:
 - Auf den Boden gebaut wie die anderen, aber Spieler hat `sy/vy` (Sprung), Welt scrollt über `weltX`.
@@ -80,13 +90,28 @@ Schlüssel-Details:
 - **rAF pausiert im Headless-Preview** → Gameplay deterministisch testen: `update()`+`spielerZeichnen()`
   pro Frame manuell in einer Schleife aufrufen (hält `hornWelt` aktuell), nicht per Auto-Klick/Timer.
 - `funkeln()` (magischer Klang) statt `bellen()` (Hund) beim Fangen.
-- **Deko (rein kosmetisch, `DEKO_ALPHA`=0.6):** `szene` = Bodendeko (Bäume/Schloss/Bodentiere) sitzt
-  am Boden (`GROUND+6`) und scrollt mit `SZENE_V = WELT_V` (gleiche Ebene wie der Boden, NICHT
-  langsamer/schwebend – sonst sieht's aus wie in der Luft). `flieger` = Lufttiere (`FLIEGER`, je mit
+- **Deko (rein kosmetisch, `DEKO_ALPHA`=0.9, 3 Parallax-Ebenen seit 2026-06-14):** `hillDeko`
+  (Schloss/Baum/Regenbogen, sitzt via `huegelObenNah(x)` AUF den Hügeln, Hügel-Tempo), `midDeko`
+  (Bäume/Bodentiere am Boden, `MID_V=WELT_V*0.6`) und `flieger`. Alle Emoji werden als
+  **Offscreen-Sprites** vorgerendert und per `drawImage` geblittet (`dekoSprite()`) —
+  `fillText(Emoji)+globalAlpha` rendert in Chrome blass, NICHT zurückbauen. `flieger` (je mit
   `typ`: 'w'=Schmetterling/Fee horizontaler Flügelschlag, 's'=Vogel/Biene), selten (~14–28 s), fliegen
   nach rechts-oben und werden in `fliegerZeichnen` **gespiegelt** (`scale(-…,…)`) → Kopf voraus in
   Flugrichtung; 's'-Typen nur vertikal pulsieren (sonst staucht der horizontale Schlag sie zum „Kopf").
   Anzahl bewusst gering (User-Wunsch).
+
+### 4. `biene.html` — Bienen-Buchstaben! (seit 2026-06-20)
+Variante von `einhorn.html` (Kopie, dann umgebaut): statt rennendem Einhorn **fliegt eine Biene**
+(im Canvas gezeichnet: gelb gestreifter Körper, große Augen, Fühler, Stachel, schlagende Flügel,
+kippt mit `spieler.tilt` in Flugrichtung). **Pfeil hoch/runter HALTEN = höher/tiefer fliegen**
+(`steuerUp`/`steuerDown` via keydown/keyup, keine Schwerkraft); **Touch: Biene folgt der
+Finger-Höhe** (`zeigerAktiv`/`zeigerY`, pointerdown/move). Flughöhe `spieler.byY` geklemmt auf
+`FLY_TOP=130`…`FLY_BOTTOM=GROUND−30`, `FLY_SPEED=5` mit Glättung. Fang = Bienenkörper (`UX`,
+`spieler.byY`) überlappt Zielblase (`FANG_R=BLASE_R+26`, kein Horn/`hornWelt`). Blasen spawnen über
+die ganze Flughöhe statt im Band. Alles andere (Audio, Musik, Deko-Sprites, Parallaxe, die drei
+Level inkl. Englisch, Glow-Regeln, Fixed-Timestep) ist identisch mit `einhorn.html` — **Level-Logik-
+Änderungen immer in BEIDEN Dateien machen** (die Blöcke sind textidentisch, ein gemeinsames
+Python-Transform-Skript pro Änderung hat sich bewährt). Menü-Kachel (honiggelb) in `start.html`.
 
 ### Design (alle Spiele, seit 2026-06-13)
 Modernes Kinder-Browsergame-Layout statt 90er-Look: weiche Pastell-Landschaft (driftende Wolken,
@@ -182,8 +207,10 @@ Setup (gleiches Muster wie `cruise-map`/`nabla-dashboard` auf dem KiteScout-VPS)
     • **U:** „Uuh"/„Uh" klingt wie „O" → `"Uu"` (klar als U).
     • Sonst: Vokale verlängert (A="Aah"), Konsonanten verdoppelt (M/N/R/S/Ell). `VOICE_OVERRIDE` erlaubt
       pro Buchstabe eine andere Stimme. Beim Ändern betroffene Clips löschen + neu erzeugen.
-  - **Level-2-Clips:** `wort_<haus|maus|wurm|baum>.mp3` (Wort vorlesen) + `super_jetzt_kommen_woerter`
-    + `wahnsinn_du_hast_alle_woerter_geschafft`. Insgesamt 178 Clips.
+  - **Level-2-Clips:** `wort_<wort>.mp3` für alle 18 `WORT_VORRAT`-Wörter + `super_jetzt_kommen_woerter`.
+  - **Level-3-Clips (englisch):** `englisch_<wort>.mp3` für alle 24 Pool-Wörter (en-US-Jenny;
+    `book`/`moon` en-GB-Sonia) + `toll_jetzt_auf_englisch` + `wahnsinn_du_kannst_schon_englisch`.
+    Insgesamt 218 aktive Clips (2 verwaiste `wahnsinn_du_hast_alle_*`-Clips liegen noch im Ordner).
   - **Hinweis:** Aussprache kann nur der Mensch final beurteilen (Whisper hört Einzel-Clips falsch) —
     bei Beschwerden gezielt die `BUCHSTABEN_NAMEN`-Schreibweise des Buchstabens anpassen.
   - Sprach-Check: `uv run --with faster-whisper python check_audio.py` (Whisper-Transkription;

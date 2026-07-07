@@ -42,7 +42,7 @@ resize();
 // ── Konstanten ─────────────────────────────────────────────────────────────
 const GROUND     = H - 78;        // Boden-Linie (Füße des Einhorns)
 const BLASE_R    = 42;
-const ZIEL_PRO_LEVEL = 15;
+const ZIEL_PRO_LEVEL = 10;
 const UX         = 200;           // feste X-Position des Einhorns
 const WELT_V     = 2.8;           // konstante Lauf-/Scrollgeschwindigkeit
 const GRAV       = 0.62;
@@ -325,12 +325,12 @@ let hillDeko       = [];  // auf den Hügeln (Schloss/Baum/Regenbogen), Hügel-T
 let hillTimer      = 0;
 let flieger        = [];  // Lufttiere (Schmetterling, Fee …) – eigener Flug
 let fliegerTimer   = 0;
-let level          = 1;   // 1 = einzelne Buchstaben, 2 = Wörter
+let level          = 1;   // 1 = Buchstaben, 2 = Wörter, 3 = Englisch
 let wortIndex      = 0;   // aktuelles Wort in Level 2
 let gebaut         = '';  // bisher gefangene Buchstaben des Wortes
 let wortFertigPending = false; // nach dem Jubel zum nächsten Wort wechseln
 
-// Level 2: Vorrat kurzer Wörter mit Bild (Emoji); pro Spiel werden 4 gewählt.
+// Level 2: Vorrat kurzer Wörter mit Bild (Emoji); pro Spiel werden 3 gewählt.
 // Nur Buchstaben A–Z (keine Umlaute/ß) – jeder Buchstabe hat einen Sprach-Clip.
 const WORT_VORRAT = [
     { wort: 'HAUS',  bild: '🏠' }, { wort: 'MAUS',  bild: '🐭' },
@@ -343,14 +343,65 @@ const WORT_VORRAT = [
     { wort: 'HERZ',  bild: '❤️' }, { wort: 'BOOT',  bild: '⛵' },
     { wort: 'ENTE',  bild: '🦆' }, { wort: 'KRONE', bild: '👑' },
 ];
-let WOERTER = [];          // die 4 Wörter dieses Spiels
+let WOERTER = [];          // die 3 Wörter dieses Spiels
 let letzteWoerter = [];    // Wörter des vorigen Spiels (für „höchstens 2 gleich")
 
-// 4 Wörter aus dem Vorrat wählen – höchstens 2 wie im vorigen Spiel.
+// Level 3: englische Begriffe — das Wort wird auf ENGLISCH angesagt,
+// gefangen wird die Blase mit dem passenden BILD (Emoji).
+const ENGLISCH_VORRAT = [
+    { wort: 'hand',   em: '\u270B' },      { wort: 'finger', em: '\u261D\uFE0F' },
+    { wort: 'ear',    em: '\uD83D\uDC42' }, { wort: 'eye',    em: '\uD83D\uDC41\uFE0F' },
+    { wort: 'house',  em: '\uD83C\uDFE0' }, { wort: 'nose',   em: '\uD83D\uDC43' },
+    { wort: 'mouth',  em: '\uD83D\uDC44' }, { wort: 'foot',   em: '\uD83E\uDDB6' },
+    { wort: 'dog',    em: '\uD83D\uDC36' }, { wort: 'cat',    em: '\uD83D\uDC31' },
+    { wort: 'sun',    em: '\u2600\uFE0F' }, { wort: 'moon',   em: '\uD83C\uDF19' },
+    { wort: 'star',   em: '\u2B50' },      { wort: 'car',    em: '\uD83D\uDE97' },
+    { wort: 'ball',   em: '\u26BD' },
+    { wort: 'fish',   em: '\uD83D\uDC1F' }, { wort: 'apple',  em: '\uD83C\uDF4E' },
+    { wort: 'duck',   em: '\uD83E\uDD86' }, { wort: 'heart',  em: '\u2764\uFE0F' },
+    { wort: 'boat',   em: '\u26F5' },
+    { wort: 'frog',   em: '\uD83D\uDC38' }, { wort: 'cake',   em: '\uD83C\uDF82' },
+    { wort: 'book',   em: '\uD83D\uDCD6' }, { wort: 'shoe',   em: '\uD83D\uDC5F' },
+];
+// (bewusst NICHT im Vorrat: 'bee'/'tree' — Biene und Bäume sind im Spiel
+// zugleich Deko bzw. Spielfigur; das angesagte Wort hätte mehrere Bilder.)
+const ZIEL_PRO_LEVEL3 = 10;   // so viele englische Begriffe pro Spiel
+let ENGLISCH = [];            // die Begriffe dieses Spiels (Reihenfolge = Ziele)
+
+// Englisches Wort ansagen. Eigener Fallback mit ENGLISCHER Web-Speech-Stimme —
+// der deutsche Standard-Fallback (de-DE) würde z. B. „eye“/„house“ entstellen.
+function englischAnsagen(em) {
+    const e = ENGLISCH_VORRAT.find(x => x.em === em);
+    if (!e) return;
+    synth.cancel();
+    let fallbackAktiv = false;
+    const fallback = () => {
+        if (fallbackAktiv) return;
+        fallbackAktiv = true;
+        const u = new SpeechSynthesisUtterance(e.wort);
+        u.lang = 'en-US';
+        const v = synth.getVoices().find(x => x.lang && x.lang.startsWith('en'));
+        if (v) u.voice = v;
+        u.rate = 0.8; u.pitch = 1.1; u.volume = 1;
+        aktuelleAussage = u;
+        synth.speak(u);
+    };
+    sprachClip.onerror = fallback;
+    sprachClip.src = 'audio/englisch_' + e.wort + '.mp3';
+    sprachClip.play().catch(fallback);
+}
+
+// Ziel ansagen — Level 1/2: Buchstabe (deutsch), Level 3: englisches Wort.
+function zielAnsagen() {
+    if (level === 3) englischAnsagen(ziel);
+    else buchstabeAnsagen(ziel);
+}
+
+// 3 Wörter aus dem Vorrat wählen – höchstens 2 wie im vorigen Spiel.
 function woerterWaehlen() {
-    let wahl = WORT_VORRAT.slice(0, 4);
+    let wahl = WORT_VORRAT.slice(0, 3);
     for (let i = 0; i < 60; i++) {
-        wahl = mischen(WORT_VORRAT).slice(0, 4);
+        wahl = mischen(WORT_VORRAT).slice(0, 3);
         const gleich = wahl.filter(w => letzteWoerter.includes(w.wort)).length;
         if (gleich <= 2) break;
     }
@@ -374,9 +425,12 @@ function naechsterBuchstabe() {
     return buchstabenSchlange.pop();
 }
 
-// Goldener Glow: Level 1 nur die ersten 6 Treffer; Level 2 nur beim ersten Wort.
+// Goldener Glow als Anfangshilfe: Level 1 die ersten 6 Treffer;
+// Level 2 nur beim ersten Wort; Level 3 die ersten 2 englischen Begriffe.
 function glowAktiv() {
-    return level === 1 ? punkte < 6 : wortIndex === 0;
+    if (level === 1) return punkte < 6;
+    if (level === 2) return wortIndex === 0;
+    return punkte < 2;
 }
 
 function zielMarkieren() {
@@ -384,10 +438,12 @@ function zielMarkieren() {
     for (const b of blasen) { if (!b.weg) { b.istZiel = b.zeichen === ziel; b.leuchtet = b.istZiel && glow; } }
 }
 
-// Nächstes Ziel: Level 1 = nächster Buchstabe der Schlange;
-// Level 2 = nächster fehlender Buchstabe des aktuellen Wortes.
+// Nächstes Ziel: Level 1 = nächster Buchstabe der Schlange; Level 2 =
+// nächster fehlender Buchstabe des Wortes; Level 3 = nächstes englisches Bild.
 function naechstesZiel() {
-    ziel = level === 1 ? naechsterBuchstabe() : WOERTER[wortIndex].wort[gebaut.length];
+    if (level === 1)      ziel = naechsterBuchstabe();
+    else if (level === 2) ziel = WOERTER[wortIndex].wort[gebaut.length];
+    else                  ziel = ENGLISCH[punkte].em;
 }
 
 function spielerErstellen() {
@@ -399,7 +455,8 @@ function spielStart() {
     wortIndex  = 0;
     gebaut     = '';
     punkte     = 0;
-    WOERTER    = woerterWaehlen();   // 4 neue Wörter (höchstens 2 wie zuvor)
+    WOERTER    = woerterWaehlen();   // 3 neue Wörter (höchstens 2 wie zuvor)
+    ENGLISCH   = mischen(ENGLISCH_VORRAT).slice(0, ZIEL_PRO_LEVEL3);  // Level-3-Ziele (Zwischenscreen zeigt sie)
     blasen     = [];
     partikel   = [];
     spieler    = spielerErstellen();
@@ -433,6 +490,21 @@ function level2Starten() {
     zustand = 'spielen';
 }
 
+function level3Starten() {
+    level      = 3;               // ENGLISCH wurde schon in spielStart gewählt
+    punkte     = 0;
+    blasen     = [];
+    partikel   = [];
+    spieler    = spielerErstellen();
+    flashTimer = 0;
+    spawnTimer = 14;
+    naechstesZiel();
+    zielMarkieren();
+    englischAnsagen(ziel);    // erstes englisches Wort ansagen
+    ansageTimer = 420;
+    zustand = 'spielen';
+}
+
 // Neues Wort beginnen: erst das WORT ansagen, dann (verzögert) den ersten Buchstaben.
 function wortStarten() {
     gebaut = '';
@@ -444,7 +516,8 @@ function wortStarten() {
 }
 
 // ── Buchstabenblasen: fliegen von rechts herein ────────────────────────────
-function farbeFuer(z) { return FARBEN[ALPHABET.indexOf(z) % FARBEN.length]; }
+function zeichenPool() { return level === 3 ? ENGLISCH_VORRAT.map(e => e.em) : ALPHABET; }
+function farbeFuer(z) { return FARBEN[Math.max(0, zeichenPool().indexOf(z)) % FARBEN.length]; }
 
 function blaseErzeugen(zeichen) {
     blasen.push({
@@ -476,11 +549,12 @@ function blasenSpawnen() {
     if (ziel && !auf.has(ziel) && Math.random() < 0.7) {
         zeichen = ziel;
     } else {
+        const pool = zeichenPool();
         for (let i = 0; i < 6; i++) {
-            const z = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+            const z = pool[Math.floor(Math.random() * pool.length)];
             if (!auf.has(z)) { zeichen = z; break; }
         }
-        if (!zeichen) zeichen = ziel || ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+        if (!zeichen) zeichen = ziel || pool[Math.floor(Math.random() * pool.length)];
     }
     blaseErzeugen(zeichen);
 }
@@ -583,9 +657,9 @@ function update() {
     if (wortFertigPending && flashTimer === 0) {
         wortFertigPending = false;
         wortIndex++;
-        if (wortIndex >= WOERTER.length) {
-            zustand = 'gewonnen';
-            clipAnsage('wahnsinn_du_hast_alle_woerter_geschafft', 'Wahnsinn! Du hast alle Wörter geschafft!', 0.9, 1.5);
+        if (wortIndex >= WOERTER.length) {     // Wörter fertig → Englisch-Level!
+            zustand = 'levelzwischen2';
+            clipAnsage('toll_jetzt_auf_englisch', 'Toll! Jetzt auf Englisch! Hör zu und fang das richtige Bild!', 0.9, 1.4);
             return;
         }
         wortStarten();
@@ -594,7 +668,7 @@ function update() {
     // Ziel ab und zu erneut ansagen (Erinnerung), aber nicht während des Jubels
     if (flashTimer === 0 && ziel) {
         ansageTimer--;
-        if (ansageTimer <= 0) { buchstabeAnsagen(ziel); ansageTimer = 420; }
+        if (ansageTimer <= 0) { zielAnsagen(); ansageTimer = 420; }
     }
 }
 
@@ -621,6 +695,20 @@ function fangen(b) {
         return;
     }
 
+    if (level === 3) {
+        letzterTreffer = ziel;                 // das gefangene Bild im Jubel zeigen
+        punkte++;
+        if (punkte >= ZIEL_PRO_LEVEL3) {       // alle Begriffe gefunden → gewonnen!
+            zustand = 'gewonnen';
+            clipAnsage('wahnsinn_du_kannst_schon_englisch', 'Wahnsinn! Du kannst schon Englisch!', 0.9, 1.5);
+            return;
+        }
+        naechstesZiel();
+        zielMarkieren();
+        ansageTimer = 1;                       // nächstes englisches Wort gleich ansagen
+        return;
+    }
+
     // Level 2: gefangenen Buchstaben ans Wort anhängen
     gebaut += ziel;
     const wort = WOERTER[wortIndex].wort;
@@ -640,6 +728,7 @@ function fangen(b) {
 function huepfen() {
     if (zustand === 'start' || zustand === 'gewonnen') { spielStart(); return; }
     if (zustand === 'levelzwischen') { level2Starten(); return; }
+    if (zustand === 'levelzwischen2'){ level3Starten(); return; }
     if (zustand !== 'spielen') return;
     if (spieler.aufBoden) {
         spieler.vy = JUMP_V; spieler.aufBoden = false; spieler.sprungUebrig = 1;
@@ -1114,7 +1203,7 @@ function blasenZeichnen() {
         ctx.stroke();
 
         ctx.fillStyle    = 'white';
-        ctx.font         = (b.zeichen.length > 1 ? 'bold 38px ' : 'bold 54px ') + SCHRIFT;
+        ctx.font         = (level === 3 ? '46px ' : (b.zeichen.length > 1 ? 'bold 38px ' : 'bold 54px ')) + SCHRIFT;
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(b.zeichen, 0, 3);
@@ -1148,8 +1237,9 @@ function anzeigeZeichnen() {
     glasPill(W - 150, 12, 138, 48, 24);
     ctx.fillStyle    = '#33506e';
     ctx.font         = 'bold 21px ' + SCHRIFT;
-    if (level === 1) ctx.fillText(`⭐ ${punkte} / ${ZIEL_PRO_LEVEL}`, W - 81, 43);
-    else             ctx.fillText(`📖 ${wortIndex + 1} / ${WOERTER.length}`, W - 81, 43);
+    if      (level === 1) ctx.fillText(`⭐ ${punkte} / ${ZIEL_PRO_LEVEL}`, W - 81, 43);
+    else if (level === 2) ctx.fillText(`📖 ${wortIndex + 1} / ${WOERTER.length}`, W - 81, 43);
+    else                  ctx.fillText(`🇬🇧 ${punkte} / ${ZIEL_PRO_LEVEL3}`, W - 81, 43);
 
     // Level 2: Wort-Baukasten oben links (Bild + entstehendes Wort)
     if (level === 2) {
@@ -1170,16 +1260,20 @@ function anzeigeZeichnen() {
         ctx.textBaseline = 'alphabetic';
     }
 
-    // Hüpf-Hinweis nur ganz am Anfang von Level 1
-    if (level === 1 && punkte < 3) {
-        ctx.font = 'bold 15px ' + SCHRIFT;
-        ctx.textAlign = 'center';
-        const txt = '⬆️ Pfeiltaste nach oben zum Hüpfen!';
-        const tb = ctx.measureText(txt).width + 40;
-        glasPill(W / 2 - tb / 2, 108, tb, 34, 17);
-        ctx.fillStyle = '#c98a00';
-        ctx.fillText(txt, W / 2, 130);
-    }
+}
+
+// Steuerungs-Hinweis (nur ganz am Anfang von Level 1) — wird VOR den Blasen
+// gezeichnet, damit er nie eine Blase oder den Glow der Zielblase verdeckt.
+function hinweisZeichnen() {
+    if (level !== 1 || punkte >= 3) return;
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = 'bold 15px ' + SCHRIFT;
+    ctx.textAlign = 'center';
+    const txt = '⬆️ Pfeiltaste nach oben zum Hüpfen!';
+    const tb = ctx.measureText(txt).width + 40;
+    glasPill(W / 2 - tb / 2, 108, tb, 34, 17);
+    ctx.fillStyle = '#c98a00';
+    ctx.fillText(txt, W / 2, 130);
 }
 
 // ── Flash-Overlay (nur bei Erfolg, kein rotes Schimpfen) ───────────────────
@@ -1300,6 +1394,28 @@ function levelZwischenZeichnen() {
     knopfZeichnen('Wörter suchen! 🔤', 404, 300);
 }
 
+function levelZwischen2Zeichnen() {
+    hintergrundZeichnen();
+    karteZeichnen(W / 2 - 300, 80, 600, 446);
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font         = '54px ' + SCHRIFT;
+    ctx.fillText('\uD83C\uDDEC\uD83C\uDDE7', W / 2, 152);
+    ctx.fillStyle    = '#ff5da2';
+    ctx.font         = 'bold 42px ' + SCHRIFT;
+    ctx.fillText('W\u00F6rter geschafft!', W / 2, 208);
+    ctx.fillStyle    = '#33506e';
+    ctx.font         = '22px ' + SCHRIFT;
+    ctx.fillText('Jetzt auf Englisch: H\u00F6r das Wort', W / 2, 250);
+    ctx.fillText('und fang das richtige Bild!', W / 2, 282);
+    ctx.font = '44px ' + SCHRIFT;
+    ctx.fillText(ENGLISCH.slice(0, 4).map(e => e.em).join(' '), W / 2, 348);
+    ctx.fillStyle    = '#7a8aa0';
+    ctx.font         = '16px ' + SCHRIFT;
+    ctx.fillText('Die Bilder fliegen in den Blasen \u2013 fang das passende!', W / 2, 388);
+    knopfZeichnen('Auf Englisch! \uD83C\uDDEC\uD83C\uDDE7', 404, 300);
+}
+
 function gewonnenZeichnen() {
     hintergrundZeichnen();
     karteZeichnen(W / 2 - 300, 92, 600, 416);
@@ -1312,9 +1428,9 @@ function gewonnenZeichnen() {
     ctx.fillText('Geschafft!', W / 2, 218);
     ctx.fillStyle    = '#33506e';
     ctx.font         = '23px ' + SCHRIFT;
-    ctx.fillText('Du hast alle Wörter geschafft!', W / 2, 264);
-    ctx.font = '44px ' + SCHRIFT;
-    ctx.fillText(WOERTER.map(w => w.bild).join('  '), W / 2, 336);
+    ctx.fillText('Buchstaben, Wörter – und Englisch!', W / 2, 264);
+    ctx.font = '36px ' + SCHRIFT;
+    ctx.fillText(ENGLISCH.map(e => e.em).join(' '), W / 2, 336);
     knopfZeichnen('Nochmal! 🦄', 388, 280);
 }
 
@@ -1331,11 +1447,13 @@ function zeichnen() {
     if (zustand === 'start')         { startbildschirmZeichnen(); return; }
     if (zustand === 'gewonnen')      { gewonnenZeichnen();        return; }
     if (zustand === 'levelzwischen') { levelZwischenZeichnen();   return; }
+    if (zustand === 'levelzwischen2'){ levelZwischen2Zeichnen();  return; }
     himmelUndHuegelZeichnen();
     hillZeichnen();          // auf den Hügeln (Hügel-Tempo)
     bodenZeichnen();
     midZeichnen();           // am Boden, eigene Ebene (0.6×)
     fliegerZeichnen();       // Lufttiere
+    hinweisZeichnen();       // unter den Blasen: verdeckt nie den Glow der Zielblase
     blasenZeichnen();
     spielerZeichnen();
     partikelZeichnen();
