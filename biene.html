@@ -324,6 +324,8 @@ let hillTimer      = 0;
 let flieger        = [];  // Lufttiere (Schmetterling, Fee …) – eigener Flug
 let fliegerTimer   = 0;
 let level          = 1;   // 1 = Buchstaben, 2 = Wörter, 3 = Englisch
+let bonusRunde     = false; // Bonus-Level: nach Englisch noch einmal Wörter (5 neue)
+let bonusTimer     = 0;     // Frames bis zum automatischen Bonus-Start (Ansage läuft)
 let wortIndex      = 0;   // aktuelles Wort in Level 2
 let gebaut         = '';  // bisher gefangene Buchstaben des Wortes
 let wortFertigPending = false; // nach dem Jubel zum nächsten Wort wechseln
@@ -363,7 +365,9 @@ const ENGLISCH_VORRAT = [
 ];
 // (bewusst NICHT im Vorrat: 'bee'/'tree' — Biene und Bäume sind im Spiel
 // zugleich Deko bzw. Spielfigur; das angesagte Wort hätte mehrere Bilder.)
-const ZIEL_PRO_LEVEL3 = 10;   // so viele englische Begriffe pro Spiel
+const ZIEL_PRO_LEVEL3 = 15;   // so viele englische Begriffe pro Spiel
+const BONUS_WOERTER   = 5;    // Wörter im Bonus-Level (nach dem Englisch-Level)
+const BONUS_ANSAGE_FRAMES = 470;  // ~7,8 s — bonus_level_ansage.mp3 (7,66 s) ausreden lassen
 let ENGLISCH = [];            // die Begriffe dieses Spiels (Reihenfolge = Ziele)
 
 // Englisches Wort ansagen. Eigener Fallback mit ENGLISCHER Web-Speech-Stimme —
@@ -424,11 +428,11 @@ function naechsterBuchstabe() {
 }
 
 // Goldener Glow als Anfangshilfe: Level 1 die ersten 6 Treffer;
-// Level 2 nur beim ersten Wort; Level 3 die ersten 2 englischen Begriffe.
+// Level 2 nur beim ersten Wort; Level 3 die ersten 8 englischen Begriffe.
 function glowAktiv() {
     if (level === 1) return punkte < 6;
     if (level === 2) return wortIndex === 0;
-    return punkte < 2;
+    return punkte < 8;
 }
 
 function zielMarkieren() {
@@ -455,6 +459,8 @@ function spielStart() {
     punkte     = 0;
     WOERTER    = woerterWaehlen();   // 3 neue Wörter (höchstens 2 wie zuvor)
     ENGLISCH   = mischen(ENGLISCH_VORRAT).slice(0, ZIEL_PRO_LEVEL3);  // Level-3-Ziele (Zwischenscreen zeigt sie)
+    bonusRunde = false;
+    bonusTimer = 0;
     blasen     = [];
     partikel   = [];
     spieler    = spielerErstellen();
@@ -501,6 +507,25 @@ function level3Starten() {
     englischAnsagen(ziel);    // erstes englisches Wort ansagen
     ansageTimer = 420;
     zustand = 'spielen';
+}
+
+// Bonus-Level: nach dem Englisch-Level kommen AUTOMATISCH noch einmal Wörter —
+// 5 neue (andere als die 3 aus Level 2), dann erst „gewonnen“.
+function bonusStarten() {
+    bonusRunde = true;
+    level      = 2;               // identische Wort-Mechanik wie Level 2
+    wortIndex  = 0;
+    gebaut     = '';
+    wortFertigPending = false;
+    const alte = new Set(WOERTER.map(w => w.wort));
+    WOERTER    = mischen(WORT_VORRAT.filter(w => !alte.has(w.wort))).slice(0, BONUS_WOERTER);
+    letzteWoerter = [...letzteWoerter, ...WOERTER.map(w => w.wort)];
+    blasen     = [];
+    partikel   = [];
+    spieler    = spielerErstellen();
+    flashTimer = 0;
+    spawnTimer = 14;
+    wortStarten();                // sagt das erste Bonus-Wort an
 }
 
 // Neues Wort beginnen: erst das WORT ansagen, dann (verzögert) den ersten Buchstaben.
@@ -661,13 +686,21 @@ function update() {
     if (wortFertigPending && flashTimer === 0) {
         wortFertigPending = false;
         wortIndex++;
-        if (wortIndex >= WOERTER.length) {     // Wörter fertig → Englisch-Level!
-            zustand = 'levelzwischen2';
+        if (wortIndex >= WOERTER.length) {
+            if (bonusRunde) {                  // Bonus-Wörter fertig → gewonnen!
+                zustand = 'gewonnen';
+                clipAnsage('wahnsinn_du_hast_alle_woerter_geschafft', 'Wahnsinn! Du hast alle Wörter geschafft!', 0.9, 1.5);
+                return;
+            }
+            zustand = 'levelzwischen2';        // Wörter fertig → Englisch-Level!
             clipAnsage('toll_jetzt_auf_englisch', 'Toll! Jetzt auf Englisch! Hör zu und fang das richtige Bild!', 0.9, 1.4);
             return;
         }
         wortStarten();
     }
+
+    // Automatischer Übergang ins Bonus-Level, sobald die Ansage Zeit hatte
+    if (bonusTimer > 0 && --bonusTimer === 0) bonusStarten();
 
     // Ziel ab und zu erneut ansagen (Erinnerung), aber nicht während des Jubels
     if (flashTimer === 0 && ziel) {
@@ -702,9 +735,11 @@ function fangen(b) {
     if (level === 3) {
         letzterTreffer = ziel;                 // das gefangene Bild im Jubel zeigen
         punkte++;
-        if (punkte >= ZIEL_PRO_LEVEL3) {       // alle Begriffe gefunden → gewonnen!
-            zustand = 'gewonnen';
-            clipAnsage('wahnsinn_du_kannst_schon_englisch', 'Wahnsinn! Du kannst schon Englisch!', 0.9, 1.5);
+        if (punkte >= ZIEL_PRO_LEVEL3) {       // alle Begriffe → automatisch ins Bonus-Level!
+            ziel = null;                       // nichts fangbar, bis das Bonus-Level startet
+            zielMarkieren();
+            bonusTimer = BONUS_ANSAGE_FRAMES;  // Ansage ausreden lassen, dann geht's von allein weiter
+            clipAnsage('bonus_level_ansage', 'Wahnsinn! Du kannst schon Englisch! Jetzt kommt das Bonus-Level!', 0.9, 1.4);
             return;
         }
         naechstesZiel();
@@ -1179,7 +1214,7 @@ function anzeigeZeichnen() {
     ctx.fillStyle    = '#33506e';
     ctx.font         = 'bold 21px ' + SCHRIFT;
     if      (level === 1) ctx.fillText(`⭐ ${punkte} / ${ZIEL_PRO_LEVEL}`, W - 81, 43);
-    else if (level === 2) ctx.fillText(`📖 ${wortIndex + 1} / ${WOERTER.length}`, W - 81, 43);
+    else if (level === 2) ctx.fillText(`${bonusRunde ? '🎁' : '📖'} ${wortIndex + 1} / ${WOERTER.length}`, W - 81, 43);
     else                  ctx.fillText(`🇬🇧 ${punkte} / ${ZIEL_PRO_LEVEL3}`, W - 81, 43);
 
     // Level 2: Wort-Baukasten oben links (Bild + entstehendes Wort)
@@ -1369,9 +1404,9 @@ function gewonnenZeichnen() {
     ctx.fillText('Geschafft!', W / 2, 218);
     ctx.fillStyle    = '#33506e';
     ctx.font         = '23px ' + SCHRIFT;
-    ctx.fillText('Buchstaben, Wörter – und Englisch!', W / 2, 264);
-    ctx.font = '36px ' + SCHRIFT;
-    ctx.fillText(ENGLISCH.map(e => e.em).join(' '), W / 2, 336);
+    ctx.fillText('Buchstaben, Wörter, Englisch – und Bonus!', W / 2, 264);
+    ctx.font = '44px ' + SCHRIFT;
+    ctx.fillText(WOERTER.map(w => w.bild).join('  '), W / 2, 336);
     knopfZeichnen('Nochmal! 🐝', 388, 280);
 }
 

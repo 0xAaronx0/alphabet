@@ -58,17 +58,25 @@ Auf dem Server `einhorn.html`.
 - **Level 3** (`level===3`, seit 2026-06-20): **Englische Begriffe.** Vorrat `ENGLISCH_VORRAT` =
   24 Wort+Emoji-Paare (hand ✋, ear 👂, house 🏠 …; OHNE bee/tree — Biene/Bäume sind im Spiel
   Deko bzw. Spielfigur, das angesagte Wort hätte sonst mehrere Bilder). `spielStart()` mischt und
-  nimmt `ZIEL_PRO_LEVEL3=10` davon → `ENGLISCH` (Ziel-Reihenfolge; `punkte` ist zugleich der
+  nimmt `ZIEL_PRO_LEVEL3=15` davon → `ENGLISCH` (Ziel-Reihenfolge; `punkte` ist zugleich der
   Index; schon in spielStart, damit der Zwischenscreen die ECHTEN ersten 4 Bilder zeigen kann).
   Das Wort wird auf ENGLISCH angesagt (`audio/englisch_<wort>.mp3`, en-US-Jenny; `book`/`moon`
   via en-GB-Sonia — Whisper-verifiziert), die Blasen zeigen Emoji-BILDER (`zeichenPool()` liefert
-  in Level 3 die Emoji statt `ALPHABET`), gefangen wird das passende Bild. Nach 10 → `gewonnen`
-  (`wahnsinn_du_kannst_schon_englisch.mp3`). Zwischen-Ansage: `toll_jetzt_auf_englisch.mp3`.
-  Kein `superSprechen()` pro Fang (nur Jubel-Flash/Konfetti), Ansage-Wiederholung via `zielAnsagen()`.
+  in Level 3 die Emoji statt `ALPHABET`), gefangen wird das passende Bild.
+  Zwischen-Ansage: `toll_jetzt_auf_englisch.mp3`. Kein `superSprechen()` pro Fang (nur
+  Jubel-Flash/Konfetti), Ansage-Wiederholung via `zielAnsagen()`.
+- **Bonus-Level** (seit 2026-07-07): Nach den 15 englischen Begriffen kommt AUTOMATISCH (ohne
+  Klick-Screen) noch einmal die Wort-Mechanik: `fangen` setzt `ziel=null` + `bonusTimer=
+  BONUS_ANSAGE_FRAMES` (470 ≈ 7,8 s, damit `bonus_level_ansage.mp3` [7,66 s] ausreden kann),
+  `update()` zählt runter und ruft `bonusStarten()`: `bonusRunde=true`, `level=2` (identische
+  Wort-Logik!), `BONUS_WOERTER=5` NEUE Wörter (aus `WORT_VORRAT` OHNE die 3 aus Level 2,
+  werden an `letzteWoerter` angehängt). HUD zeigt 🎁 statt 📖. Nach 5 Wörtern → `gewonnen`
+  (`wahnsinn_du_hast_alle_woerter_geschafft.mp3`); der Gewinn-Screen zeigt die 5 Bonus-Bilder.
+  Der Wort-fertig-Zweig in `update()` verzweigt auf `bonusRunde` (gewonnen vs. levelzwischen2).
 - **Der gesuchte Buchstabe wird NICHT angezeigt** (nur gesprochen): die Mitte-Pill zeigt „🔊 Hör gut zu!".
   In Level 2 zeigt der Wort-Baukasten oben links nur die schon GEFANGENEN Buchstaben (+ `_`-Slots).
 - **Goldener Glow (`glowAktiv()`):** Level 1 nur die ersten 6 Treffer (`punkte<6`); Level 2 nur beim
-  ersten Wort (`wortIndex===0`); Level 3 nur die ersten 2 Begriffe (`punkte<2`). Danach muss das Kind
+  ersten Wort (`wortIndex===0`); Level 3 die ersten 8 Begriffe (`punkte<8`). Danach muss das Kind
   die richtige Blase selbst finden. `glowAktiv()` steuert `leuchtet` in `blaseErzeugen` UND `zielMarkieren`.
 
 Schlüssel-Details:
@@ -208,9 +216,11 @@ Setup (gleiches Muster wie `cruise-map`/`nabla-dashboard` auf dem KiteScout-VPS)
     • Sonst: Vokale verlängert (A="Aah"), Konsonanten verdoppelt (M/N/R/S/Ell). `VOICE_OVERRIDE` erlaubt
       pro Buchstabe eine andere Stimme. Beim Ändern betroffene Clips löschen + neu erzeugen.
   - **Level-2-Clips:** `wort_<wort>.mp3` für alle 18 `WORT_VORRAT`-Wörter + `super_jetzt_kommen_woerter`.
-  - **Level-3-Clips (englisch):** `englisch_<wort>.mp3` für alle 24 Pool-Wörter (en-US-Jenny;
-    `book`/`moon` en-GB-Sonia) + `toll_jetzt_auf_englisch` + `wahnsinn_du_kannst_schon_englisch`.
-    Insgesamt 218 aktive Clips (2 verwaiste `wahnsinn_du_hast_alle_*`-Clips liegen noch im Ordner).
+  - **Level-3-/Bonus-Clips:** `englisch_<wort>.mp3` für alle 24 Pool-Wörter (en-US-Jenny;
+    `book`/`moon` en-GB-Sonia) + `toll_jetzt_auf_englisch` + `bonus_level_ansage` (Übergang ins
+    Bonus-Level) + `wahnsinn_du_hast_alle_woerter_geschafft` (Sieg nach dem Bonus).
+    Insgesamt 219 Clips im Ordner (2 davon verwaist: `wahnsinn_du_hast_alle_buchstaben_gefangen`,
+    `wahnsinn_du_kannst_schon_englisch`).
   - **Hinweis:** Aussprache kann nur der Mensch final beurteilen (Whisper hört Einzel-Clips falsch) —
     bei Beschwerden gezielt die `BUCHSTABEN_NAMEN`-Schreibweise des Buchstabens anpassen.
   - Sprach-Check: `uv run --with faster-whisper python check_audio.py` (Whisper-Transkription;

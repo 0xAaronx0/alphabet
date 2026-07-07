@@ -77,6 +77,8 @@ for w in ENGLISCH:
     entry_voice[k] = ENGLISCH_OVERRIDE.get(w, ENGLISCH_VOICE)
 entries["toll_jetzt_auf_englisch"] = "Toll! Jetzt auf Englisch! Hör zu und fang das richtige Bild!"
 entries["wahnsinn_du_kannst_schon_englisch"] = "Wahnsinn! Du kannst schon Englisch!"
+# Bonus-Level (nach dem Englisch-Level kommen automatisch 5 neue Wörter)
+entries["bonus_level_ansage"] = "Wahnsinn! Du kannst schon Englisch! Jetzt kommt das Bonus-Level!"
 
 os.makedirs(OUT, exist_ok=True)
 sem = asyncio.Semaphore(6)
